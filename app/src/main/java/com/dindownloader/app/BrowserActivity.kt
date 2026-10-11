@@ -10,6 +10,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.CookieManager
+import org.json.JSONArray
+import org.json.JSONTokener
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
@@ -59,7 +61,12 @@ class BrowserActivity : AppCompatActivity() {
             isEnabled = false
             setOnClickListener { chooseStream() }
         }
-        row.addView(choose, LinearLayout.LayoutParams(0, dp(50), 1f))
+        row.addView(choose, LinearLayout.LayoutParams(0, dp(50), 2f))
+        row.addView(MaterialButton(this).apply {
+            text = "Найти"
+            isAllCaps = false
+            setOnClickListener { scanDocument() }
+        }, LinearLayout.LayoutParams(0, dp(50), 1f))
         val close = MaterialButton(this).apply {
             text = "Закрыть"
             isAllCaps = false
@@ -89,6 +96,10 @@ class BrowserActivity : AppCompatActivity() {
                     maybeRecord(request.url.toString())
                     return super.shouldInterceptRequest(view, request)
                 }
+                override fun onPageFinished(view: WebView, url: String) {
+                    super.onPageFinished(view, url)
+                    scanDocument()
+                }
                 override fun onLoadResource(view: WebView, url: String) {
                     maybeRecord(url)
                     super.onLoadResource(view, url)
@@ -99,6 +110,32 @@ class BrowserActivity : AppCompatActivity() {
         root.addView(web)
         setContentView(root)
         web.loadUrl(start)
+    }
+
+    private fun scanDocument() {
+        if (!::web.isInitialized) return
+        web.evaluateJavascript("""
+            (function() {
+              var urls = [];
+              document.querySelectorAll('video,source').forEach(function(el) {
+                if (el.src && el.src.indexOf('blob:') !== 0) urls.push(el.src);
+              });
+              try {
+                performance.getEntriesByType('resource').forEach(function(e) {
+                  if (e.name) urls.push(e.name);
+                });
+              } catch(e) {}
+              return JSON.stringify(urls);
+            })();
+        """.trimIndent()) { raw ->
+            try {
+                val decoded = JSONTokener(raw).nextValue() as? String ?: return@evaluateJavascript
+                val links = JSONArray(decoded)
+                for (i in 0 until links.length()) {
+                    links.optString(i).takeIf(String::isNotBlank)?.let(::maybeRecord)
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     private fun maybeRecord(url: String) {
