@@ -9,8 +9,8 @@
         <item>360p</item>
     </string-array>
     <string-array name="format_options">
-        <item>Видео · MP4</item>
-        <item>Аудио · MP3</item>
-        <item>Аудио · M4A</item>
+        <item>Автоматически · исходный формат</item>
+        <item>Видео · без конвертации</item>
+        <item>Аудио · прямой файл</item>
     </string-array>
 </resources>
