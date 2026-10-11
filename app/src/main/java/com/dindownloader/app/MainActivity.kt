@@ -184,9 +184,12 @@ class MainActivity : AppCompatActivity() {
         when (job.status) {
             JobStatus.RUNNING, JobStatus.QUEUED -> startService(
                 Intent(this, DownloadService::class.java)
-                    .setAction(DownloadService.ACTION_CANCEL)
+                    .setAction(DownloadService.ACTION_PAUSE)
                     .putExtra(DownloadService.EXTRA_JOB_ID, job.id)
             )
+            JobStatus.PAUSED -> {
+                if (DownloadStore.resume(job.id)) startQueue()
+            }
             JobStatus.FAILED, JobStatus.CANCELLED -> {
                 DownloadStore.add(job.url, job.title, job.format, job.quality, job.playlist)
                 startQueue()
@@ -217,7 +220,11 @@ class MainActivity : AppCompatActivity() {
                             .putExtra(DownloadService.EXTRA_JOB_ID, job.id))
                     }.show()
             }
-            JobStatus.QUEUED -> DownloadStore.remove(job.id)
+            JobStatus.QUEUED, JobStatus.PAUSED -> {
+                startService(Intent(this, DownloadService::class.java)
+                    .setAction(DownloadService.ACTION_REMOVE)
+                    .putExtra(DownloadService.EXTRA_JOB_ID, job.id))
+            }
             JobStatus.COMPLETED -> {
                 val legacyWarning = if (job.savedUris.size < job.savedCount)
                     "\n\nВ старых загрузках сохранена ссылка не на все файлы. Остальные можно удалить вручную."
@@ -303,6 +310,7 @@ class MainActivity : AppCompatActivity() {
             val status = when (job.status) {
                 JobStatus.QUEUED -> "В очереди"
                 JobStatus.RUNNING -> "Скачивание: ${job.progress}%"
+                JobStatus.PAUSED -> "Приостановлено · ${job.progress}%"
                 JobStatus.COMPLETED -> "Готово · ${job.savedCount} файлов"
                 JobStatus.CANCELLED -> "Отменено"
                 JobStatus.FAILED -> "Ошибка"
@@ -325,6 +333,7 @@ class MainActivity : AppCompatActivity() {
                     "Скачано: ${SizeText.format(job.downloadedBytes)} / $totalText" +
                     "\nОбщий размер файла: $totalText"
                 JobStatus.QUEUED -> "Общий размер файла: $totalText"
+                JobStatus.PAUSED -> "Скачано: ${SizeText.format(job.downloadedBytes)} / $totalText"
                 JobStatus.CANCELLED, JobStatus.FAILED ->
                     "Скачано: ${SizeText.format(job.downloadedBytes)}" +
                     "\nОбщий размер файла: $totalText"
@@ -335,10 +344,10 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(Color.parseColor("#E3ECFF"))
                 setPadding(0, dp(9), 0, dp(4))
             })
-            if (job.status == JobStatus.RUNNING) {
+            if (job.status == JobStatus.RUNNING || job.status == JobStatus.PAUSED) {
                 box.addView(android.widget.ProgressBar(this, null,
                     android.R.attr.progressBarStyleHorizontal).apply {
-                    isIndeterminate = job.progress <= 0
+                    isIndeterminate = job.progress <= 0 && job.status == JobStatus.RUNNING
                     progress = job.progress
                     layoutParams = LinearLayout.LayoutParams(-1, dp(7)).apply {
                         topMargin = dp(7)
@@ -360,7 +369,8 @@ class MainActivity : AppCompatActivity() {
             }
             actions.addView(MaterialButton(this).apply {
                 text = when (job.status) {
-                    JobStatus.RUNNING, JobStatus.QUEUED -> "Отменить"
+                    JobStatus.RUNNING, JobStatus.QUEUED -> "Пауза"
+                    JobStatus.PAUSED -> "Продолжить"
                     JobStatus.COMPLETED -> "Открыть"
                     else -> "Повторить"
                 }
