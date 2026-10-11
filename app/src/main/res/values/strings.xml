@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Downloader</string>
+    <string-array name="quality_options">
+        <item>Лучшее доступное</item>
+        <item>1080p</item>
+        <item>720p</item>
+        <item>480p</item>
+        <item>360p</item>
+    </string-array>
+    <string-array name="format_options">
+        <item>Видео · MP4</item>
+        <item>Аудио · MP3</item>
+        <item>Аудио · M4A</item>
+    </string-array>
+</resources>

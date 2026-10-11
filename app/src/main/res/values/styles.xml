@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Downloader" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#4679FA</item>
+        <item name="colorPrimaryVariant">#2455CF</item>
+        <item name="colorSecondary">#6B9AFF</item>
+        <item name="android:statusBarColor">#0B1020</item>
+        <item name="android:navigationBarColor">#0B1020</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">#0B1020</item>
+    </style>
+</resources>
