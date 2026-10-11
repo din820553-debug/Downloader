@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:fitsSystemWindows="true"
+    android:background="#0B1020"
+    android:clipToPadding="false">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="26dp"
+        android:paddingBottom="42dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <ImageView
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:src="@drawable/ic_download"
+                android:contentDescription="@string/app_name" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="14dp"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Downloader"
+                    android:textColor="#FFFFFF"
+                    android:textSize="25sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Твои видео. В твоём телефоне."
+                    android:textColor="#96A7C5"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="30dp"
+            android:text="Скачивай без лишнего"
+            android:textColor="#FFFFFF"
+            android:textSize="27sp"
+            android:textStyle="bold" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="YouTube · Twitch · Vimeo · и другие сайты"
+            android:textColor="#9DABCA"
+            android:textSize="14sp" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="25dp"
+            app:cardBackgroundColor="#121B2F"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="0dp"
+            app:strokeColor="#253652"
+            app:strokeWidth="1dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="17dp">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="ССЫЛКА НА ВИДЕО"
+                    android:textColor="#A3B9E3"
+                    android:textSize="11sp"
+                    android:letterSpacing="0.08"
+                    android:textStyle="bold" />
+
+                <EditText
+                    android:id="@+id/urlInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/bg_input"
+                    android:hint="https://youtube.com/watch?v=..."
+                    android:inputType="textUri"
+                    android:singleLine="true"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#7185A6"
+                    android:textSize="14sp"
+                    android:importantForAutofill="no" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/pasteButton"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:text="Вставить"
+                        android:textAllCaps="false"
+                        android:textColor="#D5E2FF"
+                        app:backgroundTint="#24334F"
+                        app:cornerRadius="16dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/infoButton"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_marginStart="9dp"
+                        android:layout_weight="1"
+                        android:text="Проверить"
+                        android:textAllCaps="false"
+                        android:textColor="#FFFFFF"
+                        app:backgroundTint="#2D5196"
+                        app:cornerRadius="16dp" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/infoCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:visibility="gone"
+            app:cardBackgroundColor="#173148"
+            app:cardCornerRadius="18dp"
+            app:cardElevation="0dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+                <TextView
+                    android:id="@+id/infoTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Видео"
+                    android:textColor="#FFFFFF"
+                    android:maxLines="3"
+                    android:ellipsize="end"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/infoDetails"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Информация"
+                    android:textColor="#9EC3E0"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="13dp"
+            app:cardBackgroundColor="#121B2F"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="0dp"
+            app:strokeColor="#253652"
+            app:strokeWidth="1dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="17dp">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="НАСТРОЙКИ ЗАГРУЗКИ"
+                    android:textColor="#A3B9E3"
+                    android:textSize="11sp"
+                    android:letterSpacing="0.08"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:text="Формат"
+                    android:textColor="#E5EDFF"
+                    android:textSize="14sp" />
+                <Spinner
+                    android:id="@+id/formatSpinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:entries="@array/format_options"
+                    android:spinnerMode="dropdown" />
+
+                <LinearLayout
+                    android:id="@+id/qualityBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="Качество"
+                        android:textColor="#E5EDFF"
+                        android:textSize="14sp" />
+                    <Spinner
+                        android:id="@+id/qualitySpinner"
+                        android:layout_width="match_parent"
+                        android:layout_height="52dp"
+                        android:entries="@array/quality_options"
+                        android:spinnerMode="dropdown" />
+                </LinearLayout>
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/playlistSwitch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Скачивать весь плейлист"
+                    android:textColor="#D7E5FF"
+                    android:textSize="14sp"
+                    android:checked="false" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/startButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="58dp"
+                    android:layout_marginTop="17dp"
+                    android:text="↓  Скачать"
+                    android:textAllCaps="false"
+                    android:textColor="#FFFFFF"
+                    android:textSize="17sp"
+                    android:textStyle="bold"
+                    app:backgroundTint="#4679FA"
+                    app:cornerRadius="18dp" />
+
+                <TextView
+                    android:id="@+id/folderHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="11dp"
+                    android:gravity="center"
+                    android:text="Сохранение: Загрузки / Downloader"
+                    android:textColor="#7E92B5"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="30dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Мои загрузки"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/countText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0 задач"
+                android:textColor="#88A3D7"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/emptyView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_row"
+            android:gravity="center"
+            android:padding="28dp"
+            android:text="Здесь появятся твои загрузки\nДобавь ссылку, чтобы начать"
+            android:textColor="#8296B9"
+            android:textSize="14sp"
+            android:lineSpacingExtra="5dp" />
+
+        <LinearLayout
+            android:id="@+id/historyContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="27dp"
+            android:text="Для личных и разрешённых загрузок. DRM и приватный контент не поддерживаются."
+            android:gravity="center"
+            android:textColor="#71809B"
+            android:textSize="11sp" />
+    </LinearLayout>
+</ScrollView>
