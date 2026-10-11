@@ -6,9 +6,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
-enum class JobStatus {
-    QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED
-}
+enum class JobStatus { QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED }
 
 data class DownloadJob(
     val id: String,
@@ -22,16 +20,15 @@ data class DownloadJob(
     val etaSeconds: Long = -1,
     val savedCount: Int = 0,
     val resultUri: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val thumbnailUrl: String? = null,
+    val downloadedBytes: Long = 0L,
+    val totalBytes: Long = 0L,
+    val savedUris: List<String> = emptyList()
 )
 
-/**
- * Small durable download history. Work is run by DownloadService, not the Activity.
- * In-progress jobs are marked interrupted when the Android process has been killed.
- */
 object DownloadStore {
     val changes = MutableLiveData<List<DownloadJob>>(emptyList())
-
     private val records = mutableListOf<DownloadJob>()
     private var initialized = false
     private lateinit var app: Context
@@ -44,29 +41,40 @@ object DownloadStore {
             .getString("jobs", "[]") ?: "[]"
         try {
             val array = JSONArray(raw)
-            for (index in 0 until array.length()) {
-                val json = array.getJSONObject(index)
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
                 val original = runCatching {
-                    JobStatus.valueOf(json.optString("status", "FAILED"))
+                    JobStatus.valueOf(obj.optString("status", "FAILED"))
                 }.getOrDefault(JobStatus.FAILED)
                 val status = if (original == JobStatus.RUNNING || original == JobStatus.QUEUED) {
                     JobStatus.FAILED
                 } else original
+                val uris = mutableListOf<String>()
+                val saved = obj.optJSONArray("savedUris")
+                if (saved != null) {
+                    for (j in 0 until saved.length()) saved.optString(j).takeIf(String::isNotBlank)?.let(uris::add)
+                } else {
+                    obj.optString("resultUri").takeIf(String::isNotBlank)?.let(uris::add)
+                }
                 records.add(
                     DownloadJob(
-                        id = json.getString("id"),
-                        url = json.getString("url"),
-                        title = json.optString("title", "Видео"),
-                        format = json.optString("format", "mp4"),
-                        quality = json.optInt("quality", 0),
-                        playlist = json.optBoolean("playlist"),
+                        id = obj.getString("id"),
+                        url = obj.getString("url"),
+                        title = obj.optString("title", "Видео"),
+                        format = obj.optString("format", "mp4"),
+                        quality = obj.optInt("quality", 0),
+                        playlist = obj.optBoolean("playlist"),
                         status = status,
-                        progress = if (status == JobStatus.COMPLETED) 100 else json.optInt("progress"),
-                        savedCount = json.optInt("savedCount"),
-                        resultUri = json.optString("resultUri").takeIf { it.isNotBlank() },
+                        progress = if (status == JobStatus.COMPLETED) 100 else obj.optInt("progress"),
+                        savedCount = obj.optInt("savedCount"),
+                        resultUri = obj.optString("resultUri").takeIf(String::isNotBlank),
                         error = if (original == JobStatus.RUNNING || original == JobStatus.QUEUED) {
                             "Загрузка прервана системой"
-                        } else json.optString("error").takeIf { it.isNotBlank() }
+                        } else obj.optString("error").takeIf(String::isNotBlank),
+                        thumbnailUrl = obj.optString("thumbnailUrl").takeIf(String::isNotBlank),
+                        downloadedBytes = obj.optLong("downloadedBytes", 0L),
+                        totalBytes = obj.optLong("totalBytes", 0L),
+                        savedUris = uris
                     )
                 )
             }
@@ -78,8 +86,12 @@ object DownloadStore {
     }
 
     @Synchronized
-    fun add(url: String, title: String, format: String, quality: Int, playlist: Boolean): DownloadJob {
-        val job = DownloadJob(UUID.randomUUID().toString(), url, title, format, quality, playlist)
+    fun add(
+        url: String, title: String, format: String, quality: Int,
+        playlist: Boolean, thumbnailUrl: String? = null, totalBytes: Long = 0L
+    ): DownloadJob {
+        val job = DownloadJob(UUID.randomUUID().toString(), url, title, format, quality, playlist,
+            thumbnailUrl = thumbnailUrl, totalBytes = totalBytes)
         records.add(0, job)
         while (records.size > 60) records.removeAt(records.lastIndex)
         persist()
@@ -91,17 +103,28 @@ object DownloadStore {
     fun queued(): DownloadJob? = records.lastOrNull { it.status == JobStatus.QUEUED }
 
     @Synchronized
+    fun get(id: String): DownloadJob? = records.firstOrNull { it.id == id }
+
+    @Synchronized
+    fun remove(id: String): Boolean {
+        val result = records.removeAll { it.id == id }
+        if (result) {
+            persist()
+            emit()
+        }
+        return result
+    }
+
+    @Synchronized
     fun update(id: String, save: Boolean = true, modify: (DownloadJob) -> DownloadJob) {
-        val position = records.indexOfFirst { it.id == id }
-        if (position == -1) return
-        records[position] = modify(records[position])
+        val index = records.indexOfFirst { it.id == id }
+        if (index == -1) return
+        records[index] = modify(records[index])
         if (save) persist()
         emit()
     }
 
-    private fun emit() {
-        changes.postValue(records.toList())
-    }
+    private fun emit() = changes.postValue(records.toList())
 
     private fun persist() {
         val array = JSONArray()
@@ -118,6 +141,10 @@ object DownloadStore {
             data.put("savedCount", job.savedCount)
             data.put("resultUri", job.resultUri ?: "")
             data.put("error", job.error ?: "")
+            data.put("thumbnailUrl", job.thumbnailUrl ?: "")
+            data.put("downloadedBytes", job.downloadedBytes)
+            data.put("totalBytes", job.totalBytes)
+            data.put("savedUris", JSONArray(job.savedUris))
             array.put(data)
         }
         app.getSharedPreferences("downloads", Context.MODE_PRIVATE)
