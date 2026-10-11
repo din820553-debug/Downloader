@@ -136,10 +136,12 @@ class DownloadService : Service() {
     }
 
     private fun download(job: DownloadJob) {
-        if (DownloadStore.get(job.id)?.status != JobStatus.QUEUED) return
         currentJob = job.id
+        if (DownloadStore.get(job.id)?.status != JobStatus.QUEUED) {
+            currentJob = null
+            return
+        }
         cancelJob = null
-        pauseJob = null
         val base = getExternalFilesDir(null) ?: filesDir
         val directory = File(base, "working/${job.id}")
         directory.mkdirs()
