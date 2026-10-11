@@ -11,8 +11,8 @@ android {
         applicationId = "com.dindownloader.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.1.0"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -45,6 +45,7 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.7")
     implementation("com.google.android.material:material:1.12.0")
+    implementation("io.coil-kt:coil:2.7.0")
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
 }
