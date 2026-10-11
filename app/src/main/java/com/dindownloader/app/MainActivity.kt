@@ -89,6 +89,7 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
         ) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        if (DownloadStore.queued() != null) startQueue()
     }
 
     override fun onNewIntent(intent: Intent) {
