@@ -103,16 +103,26 @@ class MainActivity : AppCompatActivity() {
         ui.infoCard.visibility = View.VISIBLE
         ui.infoTitle.text = "Проверяем ссылку…"
         ui.infoDetails.text = "Подключаемся к источнику"
+        ui.infoTotalSize.text = "Общий размер файла: вычисляем…"
         ui.infoButton.isEnabled = false
         ui.infoThumbnail.visibility = View.GONE
         worker.execute {
             try {
                 YtDlpEngine.prepare(applicationContext)
-                val info = YoutubeDL.getInstance().getInfo(link)
+                val request = com.yausername.youtubedl_android.YoutubeDLRequest(link)
+                request.addOption("--no-playlist")
+                val chosenFormat = when (ui.formatSpinner.selectedItemPosition) {
+                    1 -> "mp3"
+                    2 -> "m4a"
+                    else -> "mp4"
+                }
+                val chosenQuality = listOf(0, 1080, 720, 480, 360)
+                    .getOrElse(ui.qualitySpinner.selectedItemPosition) { 0 }
+                request.addOption("-f", DownloadFormats.selector(chosenFormat, chosenQuality))
+                val info = YoutubeDL.getInstance().getInfo(request)
                 val title = info.title ?: "Видео"
                 val thumbnail = info.thumbnail?.takeIf { it.startsWith("https://") }
-                val size = info.fileSize.takeIf { it > 0 }
-                    ?: info.fileSizeApproximate.takeIf { it > 0 } ?: 0L
+                val size = DownloadFormats.estimate(info)
                 runOnUiThread {
                     if (!isDestroyed && url() == link) {
                         previewLink = link
@@ -120,8 +130,10 @@ class MainActivity : AppCompatActivity() {
                         previewThumbnail = thumbnail
                         previewSize = size
                         ui.infoTitle.text = title
-                        ui.infoDetails.text = "Источник: ${Uri.parse(link).host}" +
-                            if (size > 0) " · примерно ${SizeText.format(size)}" else ""
+                        ui.infoDetails.text = "Источник: ${Uri.parse(link).host}"
+                        ui.infoTotalSize.text = if (size > 0)
+                            "Общий размер файла: ~${SizeText.format(size)}"
+                            else "Общий размер файла: пока неизвестен"
                         ui.infoThumbnail.visibility = if (thumbnail == null) View.GONE else View.VISIBLE
                         if (thumbnail != null) ui.infoThumbnail.load(thumbnail) {
                             crossfade(true)
@@ -135,6 +147,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     if (!isDestroyed) {
                         ui.infoTitle.text = "Не удалось получить информацию"
+                        ui.infoTotalSize.text = "Общий размер файла: пока неизвестен"
                         ui.infoDetails.text = e.localizedMessage?.take(160) ?: "Неизвестная ошибка"
                         ui.infoButton.isEnabled = true
                     }
@@ -303,16 +316,18 @@ class MainActivity : AppCompatActivity() {
             header.addView(details)
             box.addView(header)
 
-            val sizeInfo = when {
-                job.status == JobStatus.COMPLETED ->
-                    "Размер: ${SizeText.format(job.downloadedBytes)}"
-                job.status == JobStatus.RUNNING && job.totalBytes > 0 ->
-                    "${SizeText.format(job.downloadedBytes)} / ~${SizeText.format(job.totalBytes)}"
-                job.status == JobStatus.RUNNING ->
-                    "Загружено: ${SizeText.format(job.downloadedBytes)}"
-                job.downloadedBytes > 0 -> "Загружено: ${SizeText.format(job.downloadedBytes)}"
-                job.totalBytes > 0 -> "Ожидается: ~${SizeText.format(job.totalBytes)}"
-                else -> ""
+            val totalText = if (job.totalBytes > 0)
+                (if (job.status == JobStatus.COMPLETED) "" else "~") + SizeText.format(job.totalBytes)
+            else "пока неизвестен"
+            val sizeInfo = when (job.status) {
+                JobStatus.COMPLETED -> "Общий размер файла: $totalText"
+                JobStatus.RUNNING ->
+                    "Скачано: ${SizeText.format(job.downloadedBytes)} / $totalText" +
+                    "\nОбщий размер файла: $totalText"
+                JobStatus.QUEUED -> "Общий размер файла: $totalText"
+                JobStatus.CANCELLED, JobStatus.FAILED ->
+                    "Скачано: ${SizeText.format(job.downloadedBytes)}" +
+                    "\nОбщий размер файла: $totalText"
             }
             if (sizeInfo.isNotBlank()) box.addView(TextView(this).apply {
                 text = sizeInfo
