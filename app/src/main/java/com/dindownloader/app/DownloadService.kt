@@ -24,6 +24,7 @@ class DownloadService : Service() {
     companion object {
         const val ACTION_START = "com.dindownloader.app.START"
         const val ACTION_CANCEL = "com.dindownloader.app.CANCEL"
+        const val ACTION_REMOVE = "com.dindownloader.app.REMOVE"
         const val EXTRA_JOB_ID = "job_id"
         private const val CHANNEL_ID = "downloader_progress"
         private const val NOTIFICATION_ID = 17
@@ -33,6 +34,7 @@ class DownloadService : Service() {
     private val running = AtomicBoolean(false)
     @Volatile private var currentJob: String? = null
     @Volatile private var cancelJob: String? = null
+    @Volatile private var removeJob: String? = null
     private var lastNotify = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -48,6 +50,17 @@ class DownloadService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_REMOVE) {
+            intent.getStringExtra(EXTRA_JOB_ID)?.let { id ->
+                if (currentJob == id) {
+                    removeJob = id
+                    cancel(id)
+                } else {
+                    DownloadStore.remove(id)
+                }
+            }
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_CANCEL) {
             val id = intent.getStringExtra(EXTRA_JOB_ID)
             if (id != null) cancel(id)
@@ -100,17 +113,37 @@ class DownloadService : Service() {
         val base = getExternalFilesDir(null) ?: filesDir
         val directory = File(base, "working/${job.id}")
         directory.mkdirs()
+        val savedUriList = mutableListOf<Uri>()
+        var succeeded = false
         DownloadStore.update(job.id) { it.copy(status = JobStatus.RUNNING, progress = 0, error = null) }
         try {
             notifyProgress("Подготовка · ${job.title.take(35)}", 0, true)
-            YoutubeDL.getInstance().init(applicationContext)
+            YtDlpEngine.prepare(applicationContext)
             FFmpeg.getInstance().init(applicationContext)
+            if (!job.playlist && job.thumbnailUrl.isNullOrBlank()) {
+                try {
+                    val info = YoutubeDL.getInstance().getInfo(job.url)
+                    DownloadStore.update(job.id) {
+                        it.copy(
+                            title = info.title ?: it.title,
+                            thumbnailUrl = info.thumbnail,
+                            totalBytes = info.fileSize.takeIf { size -> size > 0 }
+                                ?: info.fileSizeApproximate.takeIf { size -> size > 0 }
+                                ?: it.totalBytes
+                        )
+                    }
+                } catch (_: Exception) {
+                    // A metadata request may fail even for a downloadable media URL.
+                }
+            }
             if (cancelJob == job.id) throw InterruptedException("Отменено")
 
             val request = YoutubeDLRequest(job.url)
             request.addOption("--no-mtime")
             request.addOption("--trim-filenames", 110)
             request.addOption("--newline")
+            request.addOption("--progress-template",
+                "download:DOWNLOAD_STATS:%(progress.downloaded_bytes)s:%(progress.total_bytes)s:%(progress.total_bytes_estimate)s")
             if (!job.playlist) request.addOption("--no-playlist")
             request.addOption("-o", File(directory, "%(title)s [%(id)s].%(ext)s").absolutePath)
 
@@ -130,16 +163,46 @@ class DownloadService : Service() {
                 request.addOption("--recode-video", "mp4")
             }
 
-            YoutubeDL.getInstance().execute(request, job.id) { progress: Float, eta: Long, _: String ->
-                val value = progress.toInt().coerceIn(0, 100)
-                if (cancelJob != job.id) {
-                    DownloadStore.update(job.id, save = false) {
-                        it.copy(progress = value, etaSeconds = eta)
+            var finishedBytes = 0L
+            var lastPartBytes = 0L
+            var completedPartTotals = 0L
+            var partTotal = 0L
+            YoutubeDL.getInstance().execute(request, job.id) { progress: Float, eta: Long, line: String ->
+                val parsed = if (line.contains("DOWNLOAD_STATS:")) {
+                    line.substringAfter("DOWNLOAD_STATS:").trim().split(':')
+                } else emptyList()
+                var downloaded = finishedBytes + lastPartBytes
+                var total = completedPartTotals + partTotal
+                if (parsed.size >= 3) {
+                    val partBytes = parsed[0].trim().toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+                    val knownTotal = (parsed[1].trim().toLongOrNull()
+                        ?: parsed[2].trim().toLongOrNull() ?: 0L).coerceAtLeast(0L)
+                    if (partBytes < lastPartBytes && lastPartBytes > 0) {
+                        finishedBytes += lastPartBytes
+                        completedPartTotals += partTotal
+                        partTotal = 0L
                     }
+                    lastPartBytes = partBytes
+                    partTotal = maxOf(partTotal, knownTotal)
+                    downloaded = finishedBytes + partBytes
+                    total = completedPartTotals + partTotal
+                }
+                if (cancelJob != job.id) {
+                    val pct = if (progress >= 0) progress.toInt().coerceIn(0, 100)
+                        else if (total > 0) (downloaded * 100.0 / total).toInt().coerceIn(0, 100)
+                        else 0
                     val now = SystemClock.elapsedRealtime()
-                    if (now - lastNotify >= 900) {
+                    val shouldSave = now - lastNotify >= 900
+                    DownloadStore.update(job.id, save = shouldSave) {
+                        it.copy(
+                            progress = pct, etaSeconds = eta,
+                            downloadedBytes = maxOf(it.downloadedBytes, downloaded),
+                            totalBytes = if (total > 0) maxOf(total, downloaded) else it.totalBytes
+                        )
+                    }
+                    if (shouldSave) {
                         lastNotify = now
-                        notifyProgress("${job.title.take(36)} · ${value}%", value, false)
+                        notifyProgress("${job.title.take(23)} · ${SizeText.format(downloaded)}", pct, total == 0L)
                     }
                 }
             }
@@ -159,14 +222,20 @@ class DownloadService : Service() {
                 if (cancelJob == job.id) throw InterruptedException("Отменено")
                 val uri = saveToDownloads(file)
                 if (first == null) first = uri
+                savedUriList.add(uri)
                 saved++
             }
             DownloadStore.update(job.id) {
                 it.copy(
                     status = JobStatus.COMPLETED, progress = 100,
-                    savedCount = saved, resultUri = first?.toString(), error = null
+                    savedCount = saved, resultUri = first?.toString(),
+                    savedUris = savedUriList.map(Uri::toString),
+                    downloadedBytes = finished.sumOf(File::length),
+                    totalBytes = finished.sumOf(File::length),
+                    error = null
                 )
             }
+            succeeded = true
         } catch (error: Exception) {
             if (cancelJob == job.id || error is InterruptedException) {
                 DownloadStore.update(job.id) { it.copy(status = JobStatus.CANCELLED, error = null) }
@@ -177,7 +246,16 @@ class DownloadService : Service() {
                 }
             }
         } finally {
+            if (!succeeded || removeJob == job.id) {
+                savedUriList.forEach { uri ->
+                    try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                }
+            }
             directory.deleteRecursively()
+            if (removeJob == job.id) {
+                DownloadStore.remove(job.id)
+                removeJob = null
+            }
             currentJob = null
             cancelJob = null
         }
