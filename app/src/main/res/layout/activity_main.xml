@@ -130,6 +130,16 @@
                         app:backgroundTint="#2D5196"
                         app:cornerRadius="16dp" />
                 </LinearLayout>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/browserButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="6dp"
+                    android:text="Открыть страницу и найти поток"
+                    android:textAllCaps="false"
+                    android:textColor="#DCE8FF"
+                    app:backgroundTint="#263A5F"
+                    app:cornerRadius="16dp" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
