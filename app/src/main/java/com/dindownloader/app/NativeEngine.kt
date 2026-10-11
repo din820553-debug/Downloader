@@ -79,9 +79,7 @@ object NativeEngine {
     }
 
     fun absolute(base: String, path: String): String =
-        Uri.parse(base).buildUpon().build().toString().let {
-            URL(URL(base), decode(path)).toString()
-        }
+        URL(URL(base), decode(path)).toString()
 
     fun decode(value: String): String {
         val result = value.replace("\\/", "/")
@@ -105,10 +103,10 @@ object NativeEngine {
         } finally { c.disconnect() }
     }
 
-    fun probe(url: String, quality: Int = 0): MediaInfo {
+    fun probe(url: String, quality: Int = 0, referer: String? = null): MediaInfo {
         require(url.startsWith("https://") || url.startsWith("http://")) { "Нужна HTTP(S)-ссылка" }
         val ext = Uri.parse(url).lastPathSegment?.substringBefore('?')?.substringAfterLast('.')?.lowercase() ?: ""
-        val (mime, length) = try { readHead(url, null) } catch (_: Exception) { "" to 0L }
+        val (mime, length) = try { readHead(url, referer) } catch (_: Exception) { "" to 0L }
         val hls = ext == "m3u8" || "mpegurl" in mime
         if (hls) {
             return MediaInfo(url, url, fileTitle(url), kind = "hls", mime = "application/x-mpegURL")
@@ -119,7 +117,7 @@ object NativeEngine {
                 mime = if (mime.startsWith("video/") || mime.startsWith("audio/")) mime
                        else typeFor(ext))
         }
-        val page = text(url)
+        val page = text(url, referer)
         if (page.trimStart().startsWith("#EXTM3U")) {
             return MediaInfo(url, url, fileTitle(url), kind = "hls", mime = "application/x-mpegURL")
         }
