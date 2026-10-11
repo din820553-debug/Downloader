@@ -6,7 +6,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
-enum class JobStatus { QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED }
+enum class JobStatus { QUEUED, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED }
 
 data class DownloadJob(
     val id: String,
@@ -46,9 +46,7 @@ object DownloadStore {
                 val original = runCatching {
                     JobStatus.valueOf(obj.optString("status", "FAILED"))
                 }.getOrDefault(JobStatus.FAILED)
-                val status = if (original == JobStatus.RUNNING || original == JobStatus.QUEUED) {
-                    JobStatus.FAILED
-                } else original
+                val status = if (original == JobStatus.RUNNING) JobStatus.PAUSED else original
                 val uris = mutableListOf<String>()
                 val saved = obj.optJSONArray("savedUris")
                 if (saved != null) {
@@ -68,9 +66,8 @@ object DownloadStore {
                         progress = if (status == JobStatus.COMPLETED) 100 else obj.optInt("progress"),
                         savedCount = obj.optInt("savedCount"),
                         resultUri = obj.optString("resultUri").takeIf(String::isNotBlank),
-                        error = if (original == JobStatus.RUNNING || original == JobStatus.QUEUED) {
-                            "Загрузка прервана системой"
-                        } else obj.optString("error").takeIf(String::isNotBlank),
+                        error = if (original == JobStatus.RUNNING) null
+                            else obj.optString("error").takeIf(String::isNotBlank),
                         thumbnailUrl = obj.optString("thumbnailUrl").takeIf(String::isNotBlank),
                         downloadedBytes = obj.optLong("downloadedBytes", 0L),
                         totalBytes = obj.optLong("totalBytes", 0L),
@@ -101,6 +98,16 @@ object DownloadStore {
 
     @Synchronized
     fun queued(): DownloadJob? = records.lastOrNull { it.status == JobStatus.QUEUED }
+
+    @Synchronized
+    fun resume(id: String): Boolean {
+        val index = records.indexOfFirst { it.id == id }
+        if (index < 0 || records[index].status != JobStatus.PAUSED) return false
+        records[index] = records[index].copy(status = JobStatus.QUEUED, error = null)
+        persist()
+        emit()
+        return true
+    }
 
     @Synchronized
     fun get(id: String): DownloadJob? = records.firstOrNull { it.id == id }
