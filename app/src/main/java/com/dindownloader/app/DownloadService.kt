@@ -24,6 +24,7 @@ class DownloadService : Service() {
     companion object {
         const val ACTION_START = "com.dindownloader.app.START"
         const val ACTION_CANCEL = "com.dindownloader.app.CANCEL"
+        const val ACTION_PAUSE = "com.dindownloader.app.PAUSE"
         const val ACTION_REMOVE = "com.dindownloader.app.REMOVE"
         const val EXTRA_JOB_ID = "job_id"
         private const val CHANNEL_ID = "downloader_progress"
@@ -34,6 +35,7 @@ class DownloadService : Service() {
     private val running = AtomicBoolean(false)
     @Volatile private var currentJob: String? = null
     @Volatile private var cancelJob: String? = null
+    @Volatile private var pauseJob: String? = null
     @Volatile private var removeJob: String? = null
     private var lastNotify = 0L
 
@@ -56,9 +58,14 @@ class DownloadService : Service() {
                     removeJob = id
                     cancel(id)
                 } else {
+                    cleanupWorkingDirectory(id)
                     DownloadStore.remove(id)
                 }
             }
+            return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_PAUSE) {
+            intent.getStringExtra(EXTRA_JOB_ID)?.let(::pause)
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_CANCEL) {
@@ -92,6 +99,24 @@ class DownloadService : Service() {
         }
     }
 
+    private fun cleanupWorkingDirectory(id: String) {
+        val base = getExternalFilesDir(null) ?: filesDir
+        File(base, "working/$id").deleteRecursively()
+    }
+
+    private fun pause(id: String) {
+        if (currentJob == id) {
+            pauseJob = id
+            try {
+                YoutubeDL.getInstance().destroyProcessById(id)
+            } catch (_: Exception) {}
+        } else {
+            DownloadStore.update(id) {
+                if (it.status == JobStatus.QUEUED) it.copy(status = JobStatus.PAUSED) else it
+            }
+        }
+    }
+
     private fun cancel(id: String) {
         if (currentJob == id) {
             cancelJob = id
@@ -108,8 +133,10 @@ class DownloadService : Service() {
     }
 
     private fun download(job: DownloadJob) {
+        if (DownloadStore.get(job.id)?.status != JobStatus.QUEUED) return
         currentJob = job.id
         cancelJob = null
+        pauseJob = null
         val base = getExternalFilesDir(null) ?: filesDir
         val directory = File(base, "working/${job.id}")
         directory.mkdirs()
@@ -139,33 +166,15 @@ class DownloadService : Service() {
                 }
             }
             if (cancelJob == job.id) throw InterruptedException("Отменено")
+            if (pauseJob == job.id) throw InterruptedException("Приостановлено")
 
-            val request = YoutubeDLRequest(job.url)
-            request.addOption("--no-mtime")
-            request.addOption("--trim-filenames", 110)
-            request.addOption("--newline")
-            request.addOption("--progress-template",
-                "download:DOWNLOAD_STATS:%(progress.downloaded_bytes)s:%(progress.total_bytes)s:%(progress.total_bytes_estimate)s")
-            if (!job.playlist) request.addOption("--no-playlist")
-            request.addOption("-o", File(directory, "%(title)s [%(id)s].%(ext)s").absolutePath)
-
-            if (job.format == "mp3" || job.format == "m4a") {
-                request.addOption("-f", "bestaudio/best")
-                request.addOption("-x")
-                request.addOption("--audio-format", job.format)
-                if (job.format == "mp3") request.addOption("--audio-quality", "0")
-            } else {
-                val selector = DownloadFormats.selector(job.format, job.quality)
-                request.addOption("-f", selector)
-                request.addOption("--merge-output-format", "mp4")
-                request.addOption("--recode-video", "mp4")
-            }
+            val request = createRequest(job, directory, false)
 
             var finishedBytes = 0L
             var lastPartBytes = 0L
             var completedPartTotals = 0L
             var partTotal = 0L
-            YoutubeDL.getInstance().execute(request, job.id) { progress: Float, eta: Long, line: String ->
+            val reportProgress: (Float, Long, String) -> Unit = { progress, eta, line ->
                 val parsed = if (line.contains("DOWNLOAD_STATS:")) {
                     line.substringAfter("DOWNLOAD_STATS:").trim().split(':')
                 } else emptyList()
@@ -204,6 +213,25 @@ class DownloadService : Service() {
                     }
                 }
             }
+            try {
+                YoutubeDL.getInstance().execute(request, job.id, reportProgress)
+            } catch (first: Exception) {
+                if (pauseJob == job.id || cancelJob == job.id) throw first
+                // Retry using standard browser headers and an alternative media transport.
+                // If that also fails, surface both error messages.
+                notifyProgress("Пробуем другой способ загрузки…", 0, true)
+                try {
+                    YoutubeDL.getInstance().execute(
+                        createRequest(job, directory, true), job.id, reportProgress
+                    )
+                } catch (second: Exception) {
+                    if (pauseJob == job.id || cancelJob == job.id) throw second
+                    throw IllegalStateException(
+                        "Обычный: ${first.localizedMessage?.take(100)}; " +
+                        "другой способ: ${second.localizedMessage?.take(100)}", second
+                    )
+                }
+            }
 
             if (cancelJob == job.id) throw InterruptedException("Отменено")
             notifyProgress("Сохранение файлов…", 100, true)
@@ -235,7 +263,11 @@ class DownloadService : Service() {
             }
             succeeded = true
         } catch (error: Exception) {
-            if (cancelJob == job.id || error is InterruptedException) {
+            if (pauseJob == job.id) {
+                DownloadStore.update(job.id) {
+                    it.copy(status = JobStatus.PAUSED, error = null)
+                }
+            } else if (cancelJob == job.id || error is InterruptedException) {
                 DownloadStore.update(job.id) { it.copy(status = JobStatus.CANCELLED, error = null) }
             } else {
                 val message = error.localizedMessage?.take(180) ?: "Неизвестная ошибка"
@@ -249,14 +281,49 @@ class DownloadService : Service() {
                     try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
                 }
             }
-            directory.deleteRecursively()
+            if (pauseJob != job.id) directory.deleteRecursively()
             if (removeJob == job.id) {
                 DownloadStore.remove(job.id)
                 removeJob = null
             }
             currentJob = null
             cancelJob = null
+            pauseJob = null
         }
+    }
+
+    private fun createRequest(job: DownloadJob, directory: File, fallback: Boolean): YoutubeDLRequest {
+        val request = YoutubeDLRequest(job.url)
+        request.addOption("--continue")
+        request.addOption("--part")
+        request.addOption("--no-mtime")
+        request.addOption("--trim-filenames", 110)
+        request.addOption("--newline")
+        request.addOption("--progress-template",
+            "download:DOWNLOAD_STATS:%(progress.downloaded_bytes)s:%(progress.total_bytes)s:%(progress.total_bytes_estimate)s")
+        if (!job.playlist) request.addOption("--no-playlist")
+        request.addOption("-o", File(directory, "%(title)s [%(id)s].%(ext)s").absolutePath)
+        if (fallback) {
+            // Some websites require ordinary browser headers or an ffmpeg HLS transport.
+            // This does not bypass DRM, authentication or geographic restrictions.
+            request.addOption("--user-agent",
+                "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
+            request.addOption("--add-header", "Referer:${job.url}")
+            request.addOption("--downloader", "m3u8:ffmpeg")
+            request.addOption("--no-check-formats")
+        }
+        if (job.format == "mp3" || job.format == "m4a") {
+            request.addOption("-f", if (fallback) "ba/b" else "bestaudio/best")
+            request.addOption("-x")
+            request.addOption("--audio-format", job.format)
+            if (job.format == "mp3") request.addOption("--audio-quality", "0")
+        } else {
+            request.addOption("-f", if (fallback) "b[ext=mp4]/b/bv*+ba"
+                else DownloadFormats.selector(job.format, job.quality))
+            request.addOption("--merge-output-format", "mp4")
+            request.addOption("--recode-video", "mp4")
+        }
+        return request
     }
 
     private fun saveToDownloads(file: File): Uri {
