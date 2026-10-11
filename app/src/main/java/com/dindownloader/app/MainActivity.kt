@@ -207,7 +207,7 @@ class MainActivity : AppCompatActivity() {
                 })
             }
             box.addView(MaterialButton(this).apply {
-                text = when (job.status) {
+                this.text = when (job.status) {
                     JobStatus.QUEUED, JobStatus.RUNNING -> "Отменить"
                     JobStatus.COMPLETED -> "Открыть"
                     else -> "Повторить"
