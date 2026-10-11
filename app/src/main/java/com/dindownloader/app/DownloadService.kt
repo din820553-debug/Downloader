@@ -122,7 +122,11 @@ class DownloadService : Service() {
         try {
             ensureActive(job.id)
             notifyProgress("Проверяем видео…", 0, true)
-            val info = NativeEngine.probe(job.url, job.quality)
+            val info = if (!job.directMediaUrl.isNullOrBlank()) {
+                NativeEngine.probe(job.directMediaUrl, job.quality, job.url)
+                    .copy(originalUrl = job.url, referer = job.url,
+                        title = job.title.takeIf { it != "Видео" } ?: NativeEngine.fileTitle(job.url))
+            } else NativeEngine.probe(job.url, job.quality)
             ensureActive(job.id)
             if (job.format == "audio" && !info.mime.startsWith("audio/")) {
                 throw IOException("Ссылка не содержит отдельную аудиодорожку. Перекодирование в MP3 без дополнительных библиотек недоступно")
