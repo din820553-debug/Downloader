@@ -60,7 +60,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="YouTube · Twitch · Vimeo · и другие сайты"
+            android:text="Прямые ссылки · HLS · сайты с открытым видео"
             android:textColor="#9DABCA"
             android:textSize="14sp" />
 
@@ -245,10 +245,11 @@
 
                 <com.google.android.material.switchmaterial.SwitchMaterial
                     android:id="@+id/playlistSwitch"
+                    android:visibility="gone"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="Скачивать весь плейлист"
+                    android:text="Плейлисты пока не поддерживаются"
                     android:textColor="#D7E5FF"
                     android:textSize="14sp"
                     android:checked="false" />
