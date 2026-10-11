@@ -11,7 +11,6 @@
         android:icon="@drawable/ic_download"
         android:roundIcon="@drawable/ic_download"
         android:theme="@style/Theme.Downloader"
-        android:extractNativeLibs="true"
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"
@@ -27,6 +26,10 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".BrowserActivity"
+            android:exported="false"
+            android:label="Поиск видео" />
         <service
             android:name=".DownloadService"
             android:exported="false"
