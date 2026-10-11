@@ -3,6 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val signingFile = System.getenv("DOWNLOADER_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "com.dindownloader.app"
     compileSdk = 35
@@ -11,16 +13,32 @@ android {
         applicationId = "com.dindownloader.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.1.0"
+        versionCode = 4
+        versionName = "1.2.0"
         ndk {
             abiFilters += listOf("arm64-v8a")
+        }
+    }
+
+    signingConfigs {
+        if (signingFile != null) {
+            create("stableRelease") {
+                storeFile = file(signingFile)
+                storePassword = System.getenv("DOWNLOADER_KEYSTORE_PASSWORD")
+                keyAlias = "downloader"
+                keyPassword = System.getenv("DOWNLOADER_KEYSTORE_PASSWORD")
+                enableV1Signing = true
+                enableV2Signing = true
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (signingFile != null) {
+                signingConfig = signingConfigs.getByName("stableRelease")
+            }
         }
     }
 
