@@ -62,15 +62,18 @@ class DownloadService : Service() {
                     DownloadStore.remove(id)
                 }
             }
+            if (!running.get() && currentJob == null) stopSelfResult(startId)
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_PAUSE) {
             intent.getStringExtra(EXTRA_JOB_ID)?.let(::pause)
+            if (!running.get() && currentJob == null) stopSelfResult(startId)
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_CANCEL) {
             val id = intent.getStringExtra(EXTRA_JOB_ID)
             if (id != null) cancel(id)
+            if (!running.get() && currentJob == null) stopSelfResult(startId)
             return START_NOT_STICKY
         }
 
@@ -234,6 +237,7 @@ class DownloadService : Service() {
             }
 
             if (cancelJob == job.id) throw InterruptedException("Отменено")
+            if (pauseJob == job.id) throw InterruptedException("Приостановлено")
             notifyProgress("Сохранение файлов…", 100, true)
 
             val allowed = setOf("mp4", "mkv", "webm", "mov", "mp3", "m4a", "opus", "ogg")
@@ -246,6 +250,7 @@ class DownloadService : Service() {
             var saved = 0
             for (file in finished) {
                 if (cancelJob == job.id) throw InterruptedException("Отменено")
+                if (pauseJob == job.id) throw InterruptedException("Приостановлено")
                 val uri = saveToDownloads(file)
                 if (first == null) first = uri
                 savedUriList.add(uri)
