@@ -32,12 +32,12 @@ jobs:
       - name: Prepare direct APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Downloader-Android-arm64-v1.0.1.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Downloader-Android-arm64-v1.1.0.apk
           ls -lh dist/*.apk
       - name: Check APK integrity
         run: |
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/Downloader-Android-arm64-v1.0.1.apk | head -n 8
-          unzip -t dist/Downloader-Android-arm64-v1.0.1.apk | tail -n 2
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/Downloader-Android-arm64-v1.1.0.apk | head -n 8
+          unzip -t dist/Downloader-Android-arm64-v1.1.0.apk | tail -n 2
       - name: Upload workflow artifact (ZIP fallback)
         uses: actions/upload-artifact@v4
         with:
@@ -49,11 +49,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v1.0.1 >/dev/null 2>&1; then
-            gh release upload v1.0.1 dist/Downloader-Android-arm64-v1.0.1.apk --clobber
+          if gh release view v1.1.0 >/dev/null 2>&1; then
+            gh release upload v1.1.0 dist/Downloader-Android-arm64-v1.1.0.apk --clobber
           else
-            gh release create v1.0.1 dist/Downloader-Android-arm64-v1.0.1.apk \
+            gh release create v1.1.0 dist/Downloader-Android-arm64-v1.1.0.apk \
               --target "$GITHUB_SHA" \
-              --title "Downloader Android v1.0.1" \
-              --notes "Прямая установка APK без ZIP. Для Android 10+ с процессором ARM64. Экспериментальная версия; поддержка сайтов зависит от yt-dlp."
+              --title "Downloader Android v1.1.0" \
+              --notes "Превью видео, размер скачивания в МБ/ГБ, удаление задач и скачанных файлов, обновление yt-dlp. Прямой APK без ZIP, Android 10+ ARM64."
           fi
