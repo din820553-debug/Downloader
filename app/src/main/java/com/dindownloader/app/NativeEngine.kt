@@ -207,6 +207,25 @@ object NativeEngine {
                 if (absolute.startsWith("https://") || absolute.startsWith("http://")) found.add(absolute)
             } catch (_: Exception) {}
         }
+        // Recognize ordinary player JSON definitions and choose requested quality first.
+        val definitions = Regex("""["']?mediaDefinitions["']?\\s*[:=]\\s*(\\[[\\s\\S]{1,100000}?\\])""")
+            .find(html)?.groupValues?.getOrNull(1)
+        if (definitions != null) {
+            try {
+                val array = JSONArray(definitions)
+                val options = mutableListOf<Pair<Int, String>>()
+                for (i in 0 until array.length()) {
+                    val entry = array.optJSONObject(i) ?: continue
+                    val location = entry.optString("videoUrl")
+                    if (location.isNotBlank()) {
+                        options.add(entry.optString("quality").toIntOrNull().let { it ?: 0 } to location)
+                    }
+                }
+                val valid = options.filter { quality == 0 || it.first <= quality || it.first == 0 }
+                    .ifEmpty { options }
+                valid.sortedByDescending { it.first }.forEach { add(it.second) }
+            } catch (_: Exception) {}
+        }
         for (tag in listOf("og:video:secure_url","og:video:url","og:video","twitter:player:stream")) {
             findMeta(html, tag)?.let(::add)
         }
@@ -221,22 +240,6 @@ object NativeEngine {
                 val candidate = if (match.groupValues.size > 1) match.groupValues[1] else match.value
                 add(candidate)
             }
-        }
-        // Typical media player configurations embed a list of resolution-dependent definitions.
-        val definitions = Regex("mediaDefinitions\\s*[=:]\\s*(\\[[\\s\\S]{1,100000}?\\])")
-            .find(html)?.groupValues?.getOrNull(1)
-        if (definitions != null) {
-            try {
-                val array = JSONArray(definitions)
-                val variants = mutableListOf<Pair<Int,String>>()
-                for (i in 0 until array.length()) {
-                    val o = array.optJSONObject(i) ?: continue
-                    val link = o.optString("videoUrl")
-                    if (link.isNotBlank()) variants.add(o.optInt("quality") to link)
-                }
-                val ordered = variants.sortedByDescending { it.first }
-                for ((height, link) in ordered) if (quality == 0 || height <= quality) add(link)
-            } catch (_: Exception) {}
         }
         // Player JSON-LD <script type="application/ld+json"> sometimes holds direct contentUrl.
         for (m in Regex("""<script[^>]*ld\+json[^>]*>([\s\S]*?)</script>""", RegexOption.IGNORE_CASE)
@@ -265,6 +268,9 @@ object NativeEngine {
             }
         }
         if (variants.isNotEmpty()) {
+            if (lines.any { it.startsWith("#EXT-X-MEDIA:TYPE=AUDIO") && it.contains("URI=") }) {
+                throw IOException("Этот HLS-поток использует отдельное аудио. Объединение дорожек пока не поддерживается")
+            }
             val suitable = variants.filter { quality == 0 || it.first == 0 || it.first <= quality }
                 .ifEmpty { variants }
             val chosen = suitable.maxWithOrNull(compareBy<Triple<Int,Int,String>> { it.first }
