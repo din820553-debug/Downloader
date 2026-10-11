@@ -208,7 +208,7 @@ object NativeEngine {
             } catch (_: Exception) {}
         }
         // Recognize ordinary player JSON definitions and choose requested quality first.
-        val definitions = Regex("""["']?mediaDefinitions["']?\\s*[:=]\\s*(\\[[\\s\\S]{1,100000}?\\])""")
+        val definitions = Regex("""["']?mediaDefinitions["']?\s*[:=]\s*(\[[\s\S]{1,100000}?\])""")
             .find(html)?.groupValues?.getOrNull(1)
         if (definitions != null) {
             try {
