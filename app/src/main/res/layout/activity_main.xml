@@ -60,7 +60,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="YouTube · Twitch · Pornhub · Vimeo · и другие"
+            android:text="YouTube · Twitch · Vimeo · и другие сайты"
             android:textColor="#9DABCA"
             android:textSize="14sp" />
 
