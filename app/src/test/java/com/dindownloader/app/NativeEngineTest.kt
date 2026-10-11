@@ -81,6 +81,16 @@ class NativeEngineTest {
     }
 
     @Test
+    fun choosesEmbeddedPlayerQuality() {
+        val page = """<script>var player = {"mediaDefinitions":[
+            {"quality":"720","videoUrl":"https://media.example/720.mp4"},
+            {"quality":"360","videoUrl":"https://media.example/360.mp4"}]};</script>"""
+        val links = NativeEngine.extractCandidates("https://site.example/watch", page, 360)
+        assertTrue(links.isNotEmpty())
+        assertEquals("https://media.example/360.mp4", links.first())
+    }
+
+    @Test
     fun resumesTransferByHttpRange() {
         val bytes = "ABCDEFGHIJKL".toByteArray()
         rangedBody = bytes
