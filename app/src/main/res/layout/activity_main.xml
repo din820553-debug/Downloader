@@ -147,6 +147,15 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:padding="16dp">
+                <ImageView
+                    android:id="@+id/infoThumbnail"
+                    android:layout_width="match_parent"
+                    android:layout_height="178dp"
+                    android:layout_marginBottom="12dp"
+                    android:scaleType="centerCrop"
+                    android:contentDescription="Обложка видео"
+                    android:visibility="gone"
+                    android:background="@drawable/bg_row" />
                 <TextView
                     android:id="@+id/infoTitle"
                     android:layout_width="match_parent"
