@@ -12,6 +12,8 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: write
+    env:
+      SIGNING_AVAILABLE: ${{ secrets.DOWNLOADER_KEYSTORE_B64 != '' && secrets.DOWNLOADER_KEYSTORE_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -27,33 +29,62 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Build APK
+      - name: Build test APK
         run: gradle --no-daemon :app:assembleDebug
-      - name: Prepare direct APK
+
+      - name: Restore private signing key
+        if: env.SIGNING_AVAILABLE == 'true'
+        env:
+          KEY_BASE64: ${{ secrets.DOWNLOADER_KEYSTORE_B64 }}
+        run: |
+          printf '%s' "$KEY_BASE64" | base64 --decode > app/release-signing.jks
+          test -s app/release-signing.jks
+          chmod 600 app/release-signing.jks
+      - name: Build updateable signed APK
+        if: env.SIGNING_AVAILABLE == 'true'
+        env:
+          DOWNLOADER_KEYSTORE_FILE: ${{ github.workspace }}/app/release-signing.jks
+          DOWNLOADER_KEYSTORE_PASSWORD: ${{ secrets.DOWNLOADER_KEYSTORE_PASSWORD }}
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Prepare test and release APKs
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Downloader-Android-arm64-v1.1.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Downloader-TEST-v1.2.0.apk
+          if [ "$SIGNING_AVAILABLE" = "true" ]; then
+            cp app/build/outputs/apk/release/app-release.apk dist/Downloader-Android-arm64-v1.2.0.apk
+          fi
           ls -lh dist/*.apk
-      - name: Check APK integrity
+      - name: Verify APK integrity
         run: |
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/Downloader-Android-arm64-v1.1.0.apk | head -n 8
-          unzip -t dist/Downloader-Android-arm64-v1.1.0.apk | tail -n 2
-      - name: Upload workflow artifact (ZIP fallback)
+          for apk in dist/*.apk; do
+            "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | head -n 6
+            unzip -t "$apk" | tail -n 1
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          done
+      - name: Upload APK build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Downloader-Android-arm64
+          name: Downloader-Android-v1.2.0
           path: dist/*.apk
           retention-days: 30
-      - name: Publish direct APK to GitHub Releases
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+      - name: Publish permanently signed direct APK
+        if: env.SIGNING_AVAILABLE == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v1.1.0 >/dev/null 2>&1; then
-            gh release upload v1.1.0 dist/Downloader-Android-arm64-v1.1.0.apk --clobber
+          if gh release view v1.2.0 >/dev/null 2>&1; then
+            gh release upload v1.2.0 dist/Downloader-Android-arm64-v1.2.0.apk --clobber
           else
-            gh release create v1.1.0 dist/Downloader-Android-arm64-v1.1.0.apk \
+            gh release create v1.2.0 dist/Downloader-Android-arm64-v1.2.0.apk \
               --target "$GITHUB_SHA" \
-              --title "Downloader Android v1.1.0" \
-              --notes "Превью видео, размер скачивания в МБ/ГБ, удаление задач и скачанных файлов, обновление yt-dlp. Прямой APK без ZIP, Android 10+ ARM64."
+              --title "Downloader Android v1.2.0" \
+              --notes "Pornhub extractor via yt-dlp, explicit total file size and a permanent release signature for future in-place updates. Android 10+, ARM64. An older debug APK with a different signature must be removed once before installing this release."
           fi
+      - name: Missing permanent signing secrets
+        if: env.SIGNING_AVAILABLE != 'true'
+        run: |
+          echo "::warning::Signed release not published: repository secrets DOWNLOADER_KEYSTORE_B64 and DOWNLOADER_KEYSTORE_PASSWORD are required."
+          echo "## Signed release awaiting owner setup" >> "$GITHUB_STEP_SUMMARY"
+          echo "Create both repository Actions secrets from your private signing kit, then rerun this workflow." >> "$GITHUB_STEP_SUMMARY"
