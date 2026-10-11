@@ -40,7 +40,8 @@ class NativeTransfer {
         val partial = File(folder, "media.part")
         val meta = File(folder, "media.resume.json")
         val saved = try { JSONObject(meta.readText()) } catch (_: Exception) { JSONObject() }
-        if (saved.optString("source") != media.originalUrl) {
+        if (saved.optString("source") != media.originalUrl ||
+            (saved.has("mediaUrl") && saved.optString("mediaUrl") != media.mediaUrl)) {
             partial.delete()
             meta.delete()
         }
@@ -85,6 +86,7 @@ class NativeTransfer {
             val tag = c.getHeaderField("ETag")
             JSONObject().apply {
                 put("source", media.originalUrl)
+                put("mediaUrl", media.mediaUrl)
                 put("total", total)
                 if (!tag.isNullOrBlank()) put("etag", tag)
             }.let { meta.writeText(it.toString()) }
