@@ -21,7 +21,6 @@ import com.dindownloader.app.databinding.ActivityMainBinding
 import com.google.android.material.button.MaterialButton
 import androidx.appcompat.app.AlertDialog
 import coil.load
-import com.yausername.youtubedl_android.YoutubeDL
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
@@ -108,21 +107,12 @@ class MainActivity : AppCompatActivity() {
         ui.infoThumbnail.visibility = View.GONE
         worker.execute {
             try {
-                YtDlpEngine.prepare(applicationContext)
-                val request = com.yausername.youtubedl_android.YoutubeDLRequest(link)
-                request.addOption("--no-playlist")
-                val chosenFormat = when (ui.formatSpinner.selectedItemPosition) {
-                    1 -> "mp3"
-                    2 -> "m4a"
-                    else -> "mp4"
-                }
                 val chosenQuality = listOf(0, 1080, 720, 480, 360)
                     .getOrElse(ui.qualitySpinner.selectedItemPosition) { 0 }
-                request.addOption("-f", DownloadFormats.selector(chosenFormat, chosenQuality))
-                val info = YoutubeDL.getInstance().getInfo(request)
-                val title = info.title ?: "Видео"
-                val thumbnail = info.thumbnail?.takeIf { it.startsWith("https://") }
-                val size = DownloadFormats.estimate(info)
+                val info = NativeEngine.probe(link, chosenQuality)
+                val title = info.title
+                val thumbnail = info.thumbnail
+                val size = info.estimatedBytes
                 runOnUiThread {
                     if (!isDestroyed && url() == link) {
                         previewLink = link
@@ -159,15 +149,15 @@ class MainActivity : AppCompatActivity() {
     private fun enqueue() {
         val link = url() ?: return
         val format = when (ui.formatSpinner.selectedItemPosition) {
-            1 -> "mp3"
-            2 -> "m4a"
-            else -> "mp4"
+            1 -> "video"
+            2 -> "audio"
+            else -> "auto"
         }
         val quality = listOf(0, 1080, 720, 480, 360)
             .getOrElse(ui.qualitySpinner.selectedItemPosition) { 0 }
         val title = if (previewLink == link) previewTitle ?: "Видео"
             else Uri.parse(link).host ?: "Видео"
-        DownloadStore.add(link, title, format, quality, ui.playlistSwitch.isChecked,
+        DownloadStore.add(link, title, format, quality, false,
             if (previewLink == link) previewThumbnail else null,
             if (previewLink == link) previewSize else 0L)
         startQueue()
