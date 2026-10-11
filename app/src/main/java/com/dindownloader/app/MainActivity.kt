@@ -30,6 +30,30 @@ class MainActivity : AppCompatActivity() {
     private var previewTitle: String? = null
     private var previewThumbnail: String? = null
     private var previewSize = 0L
+    private var capturedMediaUrl: String? = null
+    private val browserResult = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val page = result.data?.getStringExtra(BrowserActivity.EXTRA_PAGE)
+            val media = result.data?.getStringExtra(BrowserActivity.EXTRA_MEDIA)
+            if (!page.isNullOrBlank() && !media.isNullOrBlank()) {
+                ui.urlInput.setText(page)
+                previewLink = page
+                capturedMediaUrl = media
+                previewTitle = android.net.Uri.parse(page).host ?: "Видео"
+                previewThumbnail = null
+                previewSize = 0L
+                ui.infoCard.visibility = View.VISIBLE
+                ui.infoTitle.text = "Медиапоток обнаружен"
+                ui.infoDetails.text = "Источник: " + android.net.Uri.parse(page).host
+                ui.infoTotalSize.text = "Общий размер файла: будет уточнён при загрузке"
+                ui.infoThumbnail.visibility = View.GONE
+                Toast.makeText(this, "Найдена прямая медиассылка", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private val askNotifications = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
@@ -48,6 +72,11 @@ class MainActivity : AppCompatActivity() {
             ui.urlInput.setText(findLink(raw) ?: raw)
         }
         ui.infoButton.setOnClickListener { preview() }
+        ui.browserButton.setOnClickListener {
+            val page = url() ?: return@setOnClickListener
+            browserResult.launch(Intent(this, BrowserActivity::class.java)
+                .putExtra(BrowserActivity.EXTRA_PAGE, page))
+        }
         ui.startButton.setOnClickListener { enqueue() }
         ui.formatSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -79,6 +108,7 @@ class MainActivity : AppCompatActivity() {
         previewLink = null
         previewTitle = null
         previewThumbnail = null
+        capturedMediaUrl = null
         previewSize = 0L
         ui.infoThumbnail.visibility = View.GONE
         ui.infoCard.visibility = View.GONE
@@ -109,7 +139,9 @@ class MainActivity : AppCompatActivity() {
             try {
                 val chosenQuality = listOf(0, 1080, 720, 480, 360)
                     .getOrElse(ui.qualitySpinner.selectedItemPosition) { 0 }
-                val info = NativeEngine.probe(link, chosenQuality)
+                val info = if (previewLink == link && !capturedMediaUrl.isNullOrBlank())
+                    NativeEngine.probe(capturedMediaUrl!!, chosenQuality, link)
+                else NativeEngine.probe(link, chosenQuality)
                 val title = info.title
                 val thumbnail = info.thumbnail
                 val size = info.estimatedBytes
@@ -159,7 +191,8 @@ class MainActivity : AppCompatActivity() {
             else Uri.parse(link).host ?: "Видео"
         DownloadStore.add(link, title, format, quality, false,
             if (previewLink == link) previewThumbnail else null,
-            if (previewLink == link) previewSize else 0L)
+            if (previewLink == link) previewSize else 0L,
+            if (previewLink == link) capturedMediaUrl else null)
         startQueue()
         Toast.makeText(this, "Добавлено в очередь", Toast.LENGTH_SHORT).show()
     }
@@ -181,7 +214,8 @@ class MainActivity : AppCompatActivity() {
                 if (DownloadStore.resume(job.id)) startQueue()
             }
             JobStatus.FAILED, JobStatus.CANCELLED -> {
-                DownloadStore.add(job.url, job.title, job.format, job.quality, job.playlist)
+                DownloadStore.add(job.url, job.title, job.format, job.quality, job.playlist,
+                    job.thumbnailUrl, job.totalBytes, job.directMediaUrl)
                 startQueue()
             }
             JobStatus.COMPLETED -> {
