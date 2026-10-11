@@ -120,15 +120,17 @@ class DownloadService : Service() {
             notifyProgress("Подготовка · ${job.title.take(35)}", 0, true)
             YtDlpEngine.prepare(applicationContext)
             FFmpeg.getInstance().init(applicationContext)
-            if (!job.playlist && job.thumbnailUrl.isNullOrBlank()) {
+            if (!job.playlist && (job.thumbnailUrl.isNullOrBlank() || job.totalBytes <= 0L)) {
                 try {
-                    val info = YoutubeDL.getInstance().getInfo(job.url)
+                    val metadata = YoutubeDLRequest(job.url)
+                    metadata.addOption("--no-playlist")
+                    metadata.addOption("-f", DownloadFormats.selector(job.format, job.quality))
+                    val info = YoutubeDL.getInstance().getInfo(metadata)
                     DownloadStore.update(job.id) {
                         it.copy(
                             title = info.title ?: it.title,
-                            thumbnailUrl = info.thumbnail,
-                            totalBytes = info.fileSize.takeIf { size -> size > 0 }
-                                ?: info.fileSizeApproximate.takeIf { size -> size > 0 }
+                            thumbnailUrl = info.thumbnail ?: it.thumbnailUrl,
+                            totalBytes = DownloadFormats.estimate(info).takeIf { size -> size > 0L }
                                 ?: it.totalBytes
                         )
                     }
@@ -153,11 +155,7 @@ class DownloadService : Service() {
                 request.addOption("--audio-format", job.format)
                 if (job.format == "mp3") request.addOption("--audio-quality", "0")
             } else {
-                val selector = if (job.quality == 0) {
-                    "bv*+ba/b"
-                } else {
-                    "bv*[height<=${job.quality}]+ba/b[height<=${job.quality}]/b"
-                }
+                val selector = DownloadFormats.selector(job.format, job.quality)
                 request.addOption("-f", selector)
                 request.addOption("--merge-output-format", "mp4")
                 request.addOption("--recode-video", "mp4")
