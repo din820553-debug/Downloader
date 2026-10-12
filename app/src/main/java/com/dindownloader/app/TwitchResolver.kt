@@ -2,6 +2,8 @@ package com.dindownloader.app
 
 import android.net.Uri
 import org.json.JSONObject
+import org.json.JSONArray
+import org.json.JSONTokener
 import java.io.IOException
 import java.net.URLEncoder
 
@@ -44,11 +46,18 @@ object TwitchResolver {
         try {
             conn.doOutput = true
             conn.setRequestProperty("Client-ID", CLIENT)
-            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Content-Type", "text/plain;charset=UTF-8")
             conn.setRequestProperty("Accept", "application/json")
-            conn.outputStream.use { it.write(request.toString().toByteArray(Charsets.UTF_8)) }
+            val payload = if (request.has("extensions")) JSONArray().put(request).toString()
+                else request.toString()
+            conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
             if (conn.responseCode !in 200..299) NativeEngine.errorHttp(conn)
-            val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+            val raw = JSONTokener(conn.inputStream.bufferedReader().use { it.readText() }).nextValue()
+            val json = when (raw) {
+                is JSONArray -> raw.optJSONObject(0)
+                is JSONObject -> raw
+                else -> null
+            } ?: throw IOException("Twitch прислал неожиданный ответ")
             if (json.has("errors")) {
                 val description = json.optJSONArray("errors")?.optJSONObject(0)
                     ?.optString("message").orEmpty()
@@ -112,6 +121,19 @@ object TwitchResolver {
             referer = "https://clips.twitch.tv/", mime = "video/mp4")
     }
 
+    internal fun clipDirectRequest(slug: String): JSONObject {
+        val safe = slug.replace(Regex("[^A-Za-z0-9_-]"), "")
+        val query = """{
+            clip(slug: "$safe") {
+                title
+                thumbnailURL
+                playbackAccessToken { signature value }
+                assets { videoQualities { quality sourceURL } }
+            }
+        }""".trimIndent()
+        return JSONObject().put("query", query)
+    }
+
     private fun clip(url: String, slug: String, quality: Int): MediaInfo {
         var failure: Exception? = null
         for (hash in listOf(CLIP_HASH, CLIP_HASH_BACKUP)) {
@@ -119,7 +141,11 @@ object TwitchResolver {
                 return clipFromData(url, gql(clipRequest(slug, hash)), quality)
             } catch (e: Exception) { failure = e }
         }
-        throw IOException("Не удалось получить клип Twitch: " + failure?.localizedMessage, failure)
+        try {
+            return clipFromData(url, gql(clipDirectRequest(slug)), quality)
+        } catch (e: Exception) {
+            throw IOException("Не удалось получить клип Twitch: " + e.localizedMessage, e)
+        }
     }
 
     internal fun vodRequest(id: String): JSONObject {
