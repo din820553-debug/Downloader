@@ -50,11 +50,16 @@ jobs:
       - name: Prepare test and release APKs
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Downloader-TEST-v2.0.5.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Downloader-TEST-v2.1.0.apk
           if [ "$SIGNING_AVAILABLE" = "true" ]; then
-            cp app/build/outputs/apk/release/app-release.apk dist/Downloader-Android-arm64-v2.0.5.apk
+            cp app/build/outputs/apk/release/app-release.apk dist/Downloader-Android-arm64-v2.1.0.apk
           fi
           ls -lh dist/*.apk
+      - name: Warn about the larger legacy engine APK
+        run: |
+          find dist -type f -name '*.apk' -printf '%f: %s bytes\\n'
+          echo "::notice::The HYBRID APK includes bundled yt-dlp + FFmpeg binaries and is significantly larger than the Kotlin-only 2.0.5 build. Do not bypass antivirus or banking-app warnings."
+
       - name: Verify APK integrity
         run: |
           for apk in dist/*.apk; do
@@ -65,7 +70,7 @@ jobs:
       - name: Upload APK build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Downloader-Android-v2.0.5
+          name: Downloader-Android-v2.1.0
           path: dist/*.apk
           retention-days: 30
 
@@ -84,24 +89,24 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
-            adb install -r dist/Downloader-TEST-v2.0.5.apk
+            adb install -r dist/Downloader-TEST-v2.1.0.apk
             adb shell pm path com.dindownloader.app.preview
             adb shell am start -W -n com.dindownloader.app.preview/com.dindownloader.app.MainActivity
-            adb shell dumpsys package com.dindownloader.app.preview | grep -m 1 'versionName=2.0.5-test'
+            adb shell dumpsys package com.dindownloader.app.preview | grep -m 1 'versionName=2.1.0-test'
 
       - name: Publish direct TEST APK (separate app)
         if: env.SIGNING_AVAILABLE != 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v2.0.5-test >/dev/null 2>&1; then
+          if gh release view v2.1.0-test >/dev/null 2>&1; then
             echo "TEST release already published; keeping the original APK so its signature does not change."
           else
-            gh release create v2.0.5-test dist/Downloader-TEST-v2.0.5.apk \
+            gh release create v2.1.0-test dist/Downloader-TEST-v2.1.0.apk \
               --target "$GITHUB_SHA" \
-              --title "Downloader 2.0.5 PREVIEW · separate installation" \
+              --title "Downloader 2.1.0 HYBRID · Kotlin + yt-dlp" \
               --prerelease \
-              --notes "Native Kotlin engine: recognizes legacy Twitch /channel/v/ID and player URLs, detects more media via built-in WebView including extensionless video endpoints, parses JSON-escaped media links and reports when a page requires JS playback. Protected/expired media remains unavailable." ||
+              --notes "HYBRID test APK includes two selectable engines: lightweight native Kotlin and legacy yt-dlp + FFmpeg. Large APK due to bundled executable libraries. Debug signing key may differ between runs; do not bypass device security warnings." ||
               echo "::warning::GitHub denied release publishing. APK remains available in Actions > Artifacts; enable appropriate repository workflow permissions."
           fi
 
@@ -110,13 +115,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v2.0.5 >/dev/null 2>&1; then
-            gh release upload v2.0.5 dist/Downloader-Android-arm64-v2.0.5.apk --clobber
+          if gh release view v2.1.0 >/dev/null 2>&1; then
+            gh release upload v2.1.0 dist/Downloader-Android-arm64-v2.1.0.apk --clobber
           else
-            gh release create v2.0.5 dist/Downloader-Android-arm64-v2.0.5.apk \
+            gh release create v2.1.0 dist/Downloader-Android-arm64-v2.1.0.apk \
               --target "$GITHUB_SHA" \
-              --title "Downloader Android v2.0.5" \
-              --notes "Native engine 2.0.5: legacy Twitch VOD URLs, better JavaScript browser fallback, extensionless media detection, intact video validation and pause/resume. Android 10+, ARM64."
+              --title "Downloader Android 2.1.0 HYBRID" \
+              --notes "Downloader 2.1.0 HYBRID restores optional yt-dlp + FFmpeg engine alongside native Kotlin. Each task remembers selected engine; history and Downloads site folders remain common. Android 10+, ARM64."
           fi
       - name: Missing permanent signing secrets
         if: env.SIGNING_AVAILABLE != 'true'
