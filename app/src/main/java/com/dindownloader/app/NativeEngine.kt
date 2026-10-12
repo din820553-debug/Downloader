@@ -169,9 +169,11 @@ object NativeEngine {
         if (YouTubeResolver.videoId(url) != null) {
             return YouTubeResolver.resolve(url, quality)
         }
-        if (TwitchResolver.identify(url) != null) {
+        if (TwitchResolver.isTwitchUrl(url)) {
+            val target = TwitchResolver.identify(url)
+                ?: throw IOException("Twitch: укажи ссылку на конкретную запись или клип, не страницу канала")
             return TwitchResolver.resolve(url, quality)
-                ?: throw IOException("Не удалось найти медиапоток Twitch")
+                ?: throw IOException("Twitch: не удалось получить запись или клип")
         }
         val ext = Uri.parse(url).lastPathSegment?.substringBefore('?')?.substringAfterLast('.')?.lowercase() ?: ""
         // Page URLs are not media: skip a redundant HEAD + GET round trip.
@@ -207,7 +209,7 @@ object NativeEngine {
                 ?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
         val candidates = extractCandidates(url, page, quality)
         if (candidates.isEmpty()) {
-            throw IOException("Прямая ссылка на медиа не найдена. Сайт может требовать вход, JavaScript или защищать поток")
+            throw IOException("На странице нет прямого MP4/HLS. Нажми «Открыть страницу и найти поток», запусти видео в браузере, затем выбери поток.")
         }
         for (link in candidates.take(if (previewDeadline.get() != null) 4 else 15)) {
             previewTimeLeftMs()
@@ -254,7 +256,7 @@ object NativeEngine {
                 previewTimeLeftMs()
             }
         }
-        throw IOException("Сайт не предоставил доступный видеопоток. Открой страницу во встроенном браузере и повтори")
+        throw IOException("В HTML страницы нет доступного медиа. Открой сайт встроенным браузером, включи видео и выбери обнаруженный поток.")
     }
 
     fun fileTitle(url: String): String =
