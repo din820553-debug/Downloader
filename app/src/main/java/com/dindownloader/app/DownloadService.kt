@@ -152,6 +152,8 @@ class DownloadService : Service() {
                 }
             }
             ensureActive(job.id)
+            MediaValidation.check(info, transfer.file, transfer.mime)
+            ensureActive(job.id)
             notifyProgress("Сохраняем в папку сайта…", 100, true)
             savedUri = store(job.url, info.title, transfer)
             ensureActive(job.id)
