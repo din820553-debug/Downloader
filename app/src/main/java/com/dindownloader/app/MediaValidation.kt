@@ -22,6 +22,7 @@ object MediaValidation {
         val ts = magic[0] == 0x47.toByte() || start.startsWith("ID3")
         val mp3 = start.startsWith("ID3") || (magic.size >= 2 &&
             (magic[0].toInt() and 255) == 0xff && (magic[1].toInt() and 0xe0) == 0xe0)
+        val ogg = start.startsWith("OggS")
         val aac = magic.size >= 2 && (magic[0].toInt() and 255) == 0xff &&
             (magic[1].toInt() and 0xf0) == 0xf0
         return when {
@@ -30,7 +31,8 @@ object MediaValidation {
             mime.contains("mp2t") -> ts
             mime.contains("mpeg") -> mp3 || ts
             mime.contains("aac") -> aac
-            else -> mp4 || webm || ts || mp3 || aac
+            mime.contains("ogg") || mime.contains("opus") -> ogg
+            else -> mp4 || webm || ts || mp3 || aac || ogg
         }
     }
 
