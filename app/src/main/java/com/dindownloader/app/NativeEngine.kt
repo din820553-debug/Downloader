@@ -38,7 +38,14 @@ object NativeEngine {
             "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
         connection.setRequestProperty("Accept", "*/*")
         connection.setRequestProperty("Accept-Encoding", "identity")
-        if (!referer.isNullOrBlank()) connection.setRequestProperty("Referer", referer)
+        if (!referer.isNullOrBlank()) {
+            connection.setRequestProperty("Referer", referer)
+            val parsed = Uri.parse(referer)
+            val originHost = parsed.host
+            if (originHost != null && parsed.scheme in listOf("http", "https")) {
+                connection.setRequestProperty("Origin", parsed.scheme + "://" + originHost)
+            }
+        }
         if (!range.isNullOrBlank()) connection.setRequestProperty("Range", range)
         try {
             CookieManager.getInstance().getCookie(url)?.takeIf { it.isNotBlank() }?.let {
