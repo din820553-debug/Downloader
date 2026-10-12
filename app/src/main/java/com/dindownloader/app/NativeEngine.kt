@@ -177,7 +177,8 @@ object NativeEngine {
         }
         val ext = Uri.parse(url).lastPathSegment?.substringBefore('?')?.substringAfterLast('.')?.lowercase() ?: ""
         // Page URLs are not media: skip a redundant HEAD + GET round trip.
-        val directMedia = ext in setOf("mp4","webm","m4v","mov","mp3","m4a","aac","ts","mkv","m3u8")
+        val directMedia = ext in setOf("mp4","webm","m4v","mov","mp3","m4a","aac","ts","mkv","m3u8") ||
+            (referer != null && url != referer) // Captured player URLs often have no extension.
         val (mime, length) = if (directMedia) {
             try { readHead(url, referer) } catch (e: Exception) {
                 previewTimeLeftMs()
