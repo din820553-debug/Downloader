@@ -98,6 +98,28 @@ class NativeEngineTest {
     }
 
     @Test
+    fun legacyAndNativeEnginesUseSeparateFormats() {
+        assertEquals("bv*+ba/b", LegacyYtDlpEngine.formatSelector(0))
+        assertEquals("bv*[height<=720]+ba/b[height<=720]/b",
+            LegacyYtDlpEngine.formatSelector(720))
+        assertTrue(MediaValidation.recognizable("OggS".toByteArray(), "audio/opus"))
+        assertFalse(MediaValidation.recognizable("<html>denied</html>".toByteArray(), "audio/ogg"))
+    }
+
+    @Test
+    fun downloadQueuePersistsSelectedLegacyEngine() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        DownloadStore.init(context)
+        val job = DownloadStore.add(
+            "https://video.example.net/video", "Test video", "auto", 720,
+            false, engine = "legacy")
+        assertEquals("legacy", DownloadStore.get(job.id)?.engine)
+        val copy = DownloadStore.get(job.id)!!.copy(status = JobStatus.FAILED)
+        assertEquals("legacy", copy.engine)
+        DownloadStore.remove(job.id)
+    }
+
+    @Test
     fun recognizesTwitchVodsAndClips() {
         assertEquals("12345678", TwitchResolver.identify(
             "https://www.twitch.tv/videos/12345678")?.vod)
