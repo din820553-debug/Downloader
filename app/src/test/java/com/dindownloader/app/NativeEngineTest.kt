@@ -108,7 +108,7 @@ class NativeEngineTest {
 
     @Test
     fun downloadQueuePersistsSelectedLegacyEngine() {
-        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
         DownloadStore.init(context)
         val job = DownloadStore.add(
             "https://video.example.net/video", "Test video", "auto", 720,
