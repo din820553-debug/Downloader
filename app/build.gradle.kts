@@ -13,8 +13,8 @@ android {
         applicationId = "com.dindownloader.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 9
-        versionName = "2.0.3"
+        versionCode = 10
+        versionName = "2.0.4"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -36,9 +36,9 @@ android {
     buildTypes {
         debug {
             // Test builds must never collide with an installed production app.
-            applicationIdSuffix = ".beta"
+            applicationIdSuffix = ".preview"
             versionNameSuffix = "-test"
-            manifestPlaceholders["appLabel"] = "Downloader BETA"
+            manifestPlaceholders["appLabel"] = "Downloader PREVIEW"
             if (signingFile != null) {
                 signingConfig = signingConfigs.getByName("stableRelease")
             }
