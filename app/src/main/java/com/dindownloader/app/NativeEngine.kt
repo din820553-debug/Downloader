@@ -19,7 +19,8 @@ data class MediaInfo(
     val estimatedBytes: Long = 0L,
     val kind: String = "file",
     val referer: String? = null,
-    val mime: String = "video/mp4"
+    val mime: String = "video/mp4",
+    val expectedDurationSeconds: Long = 0L
 )
 
 data class SegmentInfo(val url: String, val init: Boolean = false)
@@ -128,6 +129,9 @@ object NativeEngine {
 
     fun probe(url: String, quality: Int = 0, referer: String? = null): MediaInfo {
         require(url.startsWith("https://") || url.startsWith("http://")) { "Нужна HTTP(S)-ссылка" }
+        if (YouTubeResolver.videoId(url) != null) {
+            return YouTubeResolver.resolve(url, quality)
+        }
         if (TwitchResolver.identify(url) != null) {
             return TwitchResolver.resolve(url, quality)
                 ?: throw IOException("Не удалось найти медиапоток Twitch")
@@ -152,6 +156,11 @@ object NativeEngine {
         val title = Regex("""<title[^>]*>([\s\S]*?)</title>""", RegexOption.IGNORE_CASE)
             .find(page)?.groupValues?.get(1)?.let(::cleanTitle) ?: fileTitle(url)
         val picture = findMeta(page, "og:image")?.let { absolute(url, it) }
+        val expectedDuration = findMeta(page, "video:duration")
+            ?.toDoubleOrNull()?.toLong()
+            ?: findMeta(page, "og:video:duration")?.toDoubleOrNull()?.toLong()
+            ?: Regex(""""duration"\\s*:\\s*(\\d{1,7})""").find(page)
+                ?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
         val candidates = extractCandidates(url, page, quality)
         if (candidates.isEmpty()) {
             throw IOException("Прямая ссылка на медиа не найдена. Сайт может требовать вход, JavaScript или защищать поток")
@@ -163,19 +172,22 @@ object NativeEngine {
                 if (kindMime.contains("text/html")) continue
                 if ("mpegurl" in kindMime || fileExt == "m3u8") {
                     return MediaInfo(url, link, title, picture, kind = "hls",
-                        referer = url, mime = "application/x-mpegURL")
+                        referer = url, mime = "application/x-mpegURL",
+                        expectedDurationSeconds = expectedDuration)
                 }
                 if (kindMime.startsWith("video/") || kindMime.startsWith("audio/") ||
                     fileExt in setOf("mp4", "m4v", "webm", "m4a", "mp3", "mov")) {
                     return MediaInfo(url, link, title, picture, bytes,
                         referer = url, mime = if (kindMime.startsWith("video/") ||
-                            kindMime.startsWith("audio/")) kindMime else typeFor(fileExt))
+                            kindMime.startsWith("audio/")) kindMime else typeFor(fileExt),
+                        expectedDurationSeconds = expectedDuration)
                 }
                 // Some media endpoints do not support HEAD. Keep only obvious media extensions.
                 if (fileExt in setOf("mp4", "m4v", "m3u8", "webm", "m4a", "mp3")) {
                     return MediaInfo(url, link, title, picture, bytes,
                         kind = if (fileExt == "m3u8") "hls" else "file",
-                        referer = url, mime = typeFor(fileExt))
+                        referer = url, mime = typeFor(fileExt),
+                        expectedDurationSeconds = expectedDuration)
                 }
                 // Endpoints may return a JSON list of alternate quality URLs.
                 if ("json" in kindMime && link != url) {
