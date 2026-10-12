@@ -46,7 +46,7 @@ object LegacyYtDlpEngine {
         )
     }
 
-    private fun formatSelector(quality: Int): String =
+    internal fun formatSelector(quality: Int): String =
         if (quality <= 0) "bv*+ba/b"
         else "bv*[height<=$quality]+ba/b[height<=$quality]/b"
 
