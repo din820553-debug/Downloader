@@ -13,8 +13,8 @@ android {
         applicationId = "com.dindownloader.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 10
-        versionName = "2.0.4"
+        versionCode = 11
+        versionName = "2.0.5"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
