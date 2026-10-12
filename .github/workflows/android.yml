@@ -81,7 +81,8 @@ jobs:
               --target "$GITHUB_SHA" \
               --title "Downloader 2.0.2 TEST · separate installation" \
               --prerelease \
-              --notes "This experimental APK installs as com.dindownloader.app.test alongside older Downloader versions. It does not overwrite or delete their data. Future in-place upgrades require a stable private signing key."
+              --notes "This experimental APK installs as com.dindownloader.app.test alongside older Downloader versions. It does not overwrite or delete their data. Future in-place upgrades require a stable private signing key." ||
+              echo "::warning::GitHub denied release publishing. APK remains available in Actions > Artifacts; enable appropriate repository workflow permissions."
           fi
 
       - name: Publish permanently signed direct APK
