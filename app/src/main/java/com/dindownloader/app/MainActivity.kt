@@ -38,6 +38,9 @@ class MainActivity : AppCompatActivity() {
     private var previewThumbnail: String? = null
     private var previewSize = 0L
     private var capturedMediaUrl: String? = null
+    private fun selectedEngine(): String =
+        if (ui.engineSpinner.selectedItemPosition == 1) "legacy" else "native"
+
     private val browserResult = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -85,6 +88,32 @@ class MainActivity : AppCompatActivity() {
                 .putExtra(BrowserActivity.EXTRA_PAGE, page))
         }
         ui.startButton.setOnClickListener { enqueue() }
+        ui.engineSpinner.setSelection(
+            if (getSharedPreferences("interface", MODE_PRIVATE).getString("engine", "native") == "legacy")
+                1 else 0
+        )
+        ui.engineSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val old = getSharedPreferences("interface", MODE_PRIVATE).getString("engine", "native")
+                val engine = selectedEngine()
+                getSharedPreferences("interface", MODE_PRIVATE).edit().putString("engine", engine).apply()
+                ui.engineHint.text = if (engine == "legacy")
+                    "yt-dlp + FFmpeg: больше сайтов, но большой APK и долгая подготовка"
+                else "Kotlin: небольшая нагрузка, прямые видео и открытые HLS"
+                if (old != engine) {
+                    previewLink = null
+                    previewTitle = null
+                    previewThumbnail = null
+                    previewSize = 0L
+                    ui.infoCard.visibility = View.GONE
+                    previewFuture?.cancel(true)
+                    previewGeneration++
+                    cancelPreviewTimeout()
+                    ui.infoButton.isEnabled = true
+                }
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
         ui.formatSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 ui.qualityBox.visibility = if (position == 0) View.VISIBLE else View.GONE
@@ -144,7 +173,8 @@ class MainActivity : AppCompatActivity() {
         val link = url() ?: return
         val quality = listOf(0, 1080, 720, 480, 360)
             .getOrElse(ui.qualitySpinner.selectedItemPosition) { 0 }
-        val selectedMedia = if (previewLink == link) capturedMediaUrl else null
+        val engine = selectedEngine()
+        val selectedMedia = if (engine == "native" && previewLink == link) capturedMediaUrl else null
         previewFuture?.cancel(true)
         cancelPreviewTimeout()
         val requestId = ++previewGeneration
@@ -172,7 +202,9 @@ class MainActivity : AppCompatActivity() {
 
         previewFuture = worker.submit {
             try {
-                val info = if (!selectedMedia.isNullOrBlank())
+                val info = if (engine == "legacy")
+                    LegacyYtDlpEngine.inspect(applicationContext, link, quality)
+                else if (!selectedMedia.isNullOrBlank())
                     NativeEngine.previewProbe(selectedMedia, quality, link)
                 else NativeEngine.previewProbe(link, quality)
                 runOnUiThread {
@@ -228,7 +260,8 @@ class MainActivity : AppCompatActivity() {
         DownloadStore.add(link, title, format, quality, false,
             if (previewLink == link) previewThumbnail else null,
             if (previewLink == link) previewSize else 0L,
-            if (previewLink == link) capturedMediaUrl else null)
+            if (previewLink == link && selectedEngine() == "native") capturedMediaUrl else null,
+            selectedEngine())
         startQueue()
         Toast.makeText(this, "Добавлено в очередь", Toast.LENGTH_SHORT).show()
     }
@@ -251,7 +284,7 @@ class MainActivity : AppCompatActivity() {
             }
             JobStatus.FAILED, JobStatus.CANCELLED -> {
                 DownloadStore.add(job.url, job.title, job.format, job.quality, job.playlist,
-                    job.thumbnailUrl, job.totalBytes, job.directMediaUrl)
+                    job.thumbnailUrl, job.totalBytes, job.directMediaUrl, job.engine)
                 startQueue()
             }
             JobStatus.COMPLETED -> {
@@ -377,7 +410,7 @@ class MainActivity : AppCompatActivity() {
                 JobStatus.FAILED -> "Ошибка"
             }
             details.addView(TextView(this).apply {
-                text = "${job.format.uppercase()} · $status"
+                text = "${if (job.engine == "legacy") "yt-dlp" else "Kotlin"} · ${job.format.uppercase()} · $status"
                 textSize = 12f
                 setTextColor(Color.parseColor("#A8C1F4"))
                 setPadding(0, dp(6), 0, 0)
