@@ -280,23 +280,33 @@ object NativeEngine {
         if (!data.trimStart().startsWith("#EXTM3U")) throw IOException("Сервер не прислал HLS-плейлист")
         val lines = data.lines().map(String::trim).filter(String::isNotBlank)
         val variants = mutableListOf<Triple<Int,Int,String>>()
+        val audioGroupsByVariant = mutableMapOf<String, String>()
         for (i in lines.indices) {
             if (lines[i].startsWith("#EXT-X-STREAM-INF:")) {
                 val attrs = lines[i].substringAfter(':')
                 val h = Regex("RESOLUTION=\\d+x(\\d+)").find(attrs)?.groupValues?.get(1)?.toIntOrNull() ?: 0
                 val bw = Regex("BANDWIDTH=(\\d+)").find(attrs)?.groupValues?.get(1)?.toIntOrNull() ?: 0
                 val path = lines.drop(i+1).firstOrNull { !it.startsWith("#") } ?: continue
-                variants.add(Triple(h,bw,absolute(info.mediaUrl,path)))
+                val variantUrl = absolute(info.mediaUrl, path)
+                variants.add(Triple(h, bw, variantUrl))
+                val audioGroup = Regex("""AUDIO="([^"]+)"""").find(attrs)?.groupValues?.get(1)
+                if (audioGroup != null) audioGroupsByVariant[variantUrl] = audioGroup
             }
         }
         if (variants.isNotEmpty()) {
-            if (lines.any { it.startsWith("#EXT-X-MEDIA:TYPE=AUDIO") && it.contains("URI=") }) {
-                throw IOException("Этот HLS-поток использует отдельное аудио. Объединение дорожек пока не поддерживается")
-            }
             val suitable = variants.filter { quality == 0 || it.first == 0 || it.first <= quality }
                 .ifEmpty { variants }
             val chosen = suitable.maxWithOrNull(compareBy<Triple<Int,Int,String>> { it.first }
                 .thenBy { it.second })!!
+            val associatedAudio = audioGroupsByVariant[chosen.third]
+            if (associatedAudio != null && lines.any {
+                it.startsWith("#EXT-X-MEDIA:") &&
+                it.contains("TYPE=AUDIO") &&
+                it.contains("GROUP-ID=\"$associatedAudio\"") &&
+                it.contains("URI=")
+            }) {
+                throw IOException("Выбранный видеопоток имеет отдельное аудио; объединение пока не реализовано")
+            }
             return playlist(info.copy(mediaUrl = chosen.third),quality,depth+1)
         }
         if (lines.any { it.startsWith("#EXT-X-KEY:") && !it.contains("METHOD=NONE") }) {
