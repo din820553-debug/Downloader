@@ -74,11 +74,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v2.0.2-test dist/Downloader-TEST-v2.0.2.apk \
-            --target "$GITHUB_SHA" \
-            --title "Downloader 2.0.2 TEST · separate installation" \
-            --prerelease \
-            --notes "This experimental APK installs as com.dindownloader.app.test alongside older Downloader versions. It does not overwrite or delete their data. Test APK signatures can change between GitHub Actions runs. Set stable release signing secrets for future reliable in-place upgrades."
+          if gh release view v2.0.2-test >/dev/null 2>&1; then
+            echo "TEST release already published; keeping the original APK so its signature does not change."
+          else
+            gh release create v2.0.2-test dist/Downloader-TEST-v2.0.2.apk \
+              --target "$GITHUB_SHA" \
+              --title "Downloader 2.0.2 TEST · separate installation" \
+              --prerelease \
+              --notes "This experimental APK installs as com.dindownloader.app.test alongside older Downloader versions. It does not overwrite or delete their data. Future in-place upgrades require a stable private signing key."
+          fi
 
       - name: Publish permanently signed direct APK
         if: env.SIGNING_AVAILABLE == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
