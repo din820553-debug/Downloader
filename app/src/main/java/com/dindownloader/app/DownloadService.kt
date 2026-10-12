@@ -282,7 +282,8 @@ class DownloadService : Service() {
 
     private fun notification(message: String, progress: Int, unknown: Boolean): Notification {
         val activity = PendingIntent.getActivity(this, 0,
-            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            (packageManager.getLaunchIntentForPackage(packageName)
+                ?: Intent(this, MainActivity::class.java)).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_download)
