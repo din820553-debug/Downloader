@@ -4,6 +4,7 @@ import android.content.Context
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
+import java.util.concurrent.atomic.AtomicBoolean
 import java.io.File
 import java.io.IOException
 
@@ -52,6 +53,17 @@ object LegacyYtDlpEngine {
         )
     }
 
+    /**
+     * Explicit user-requested extractor update, not an automatic binary download.
+     * Existing bundled extractor remains available when network update fails.
+     */
+    @Synchronized
+    fun updateExtractor(context: Context) {
+        prepare(context, false)
+        YoutubeDL.getInstance().updateYoutubeDL(
+            context.applicationContext, YoutubeDL.UpdateChannel.STABLE)
+    }
+
     internal fun formatSelector(quality: Int): String =
         if (quality <= 0) "bv*+ba/b"
         else "bv*[height<=$quality]+ba/b[height<=$quality]/b"
@@ -72,7 +84,11 @@ object LegacyYtDlpEngine {
     ): List<TransferResult> {
         prepare(context, true)
         directory.mkdirs()
-        val request = YoutubeDLRequest(job.url)
+        val streamUrl = job.directMediaUrl?.takeIf(String::isNotBlank) ?: job.url
+        val request = YoutubeDLRequest(streamUrl)
+        if (streamUrl != job.url) {
+            request.addOption("--referer", job.url)
+        }
         request.addOption("--no-mtime")
         request.addOption("--trim-filenames", 110)
         request.addOption("--newline")
