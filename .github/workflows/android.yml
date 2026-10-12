@@ -50,9 +50,9 @@ jobs:
       - name: Prepare test and release APKs
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Downloader-TEST-v2.0.3.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Downloader-TEST-v2.0.4.apk
           if [ "$SIGNING_AVAILABLE" = "true" ]; then
-            cp app/build/outputs/apk/release/app-release.apk dist/Downloader-Android-arm64-v2.0.3.apk
+            cp app/build/outputs/apk/release/app-release.apk dist/Downloader-Android-arm64-v2.0.4.apk
           fi
           ls -lh dist/*.apk
       - name: Verify APK integrity
@@ -65,7 +65,7 @@ jobs:
       - name: Upload APK build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Downloader-Android-v2.0.3
+          name: Downloader-Android-v2.0.4
           path: dist/*.apk
           retention-days: 30
 
@@ -74,14 +74,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v2.0.3-test >/dev/null 2>&1; then
+          if gh release view v2.0.4-test >/dev/null 2>&1; then
             echo "TEST release already published; keeping the original APK so its signature does not change."
           else
-            gh release create v2.0.3-test dist/Downloader-TEST-v2.0.3.apk \
+            gh release create v2.0.4-test dist/Downloader-TEST-v2.0.4.apk \
               --target "$GITHUB_SHA" \
-              --title "Downloader 2.0.3 BETA · separate installation" \
+              --title "Downloader 2.0.4 PREVIEW · separate installation" \
               --prerelease \
-              --notes "This beta APK installs as com.dindownloader.app.beta alongside earlier Downloader test versions. Native YouTube extraction, Twitch clip/VOD parser update, HLS preview duration checks and real media validation. Future in-place upgrades require a stable private signing key." ||
+              --notes "This preview APK uses com.dindownloader.app.preview to avoid temporary signing key collisions. Metadata preview has a 12s timeout and can never block the interface indefinitely. Download-side media resolution has a 25s timeout; large video transfers retain their normal settings. Proper media validation remains enabled." ||
               echo "::warning::GitHub denied release publishing. APK remains available in Actions > Artifacts; enable appropriate repository workflow permissions."
           fi
 
@@ -90,13 +90,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v2.0.3 >/dev/null 2>&1; then
-            gh release upload v2.0.3 dist/Downloader-Android-arm64-v2.0.3.apk --clobber
+          if gh release view v2.0.4 >/dev/null 2>&1; then
+            gh release upload v2.0.4 dist/Downloader-Android-arm64-v2.0.4.apk --clobber
           else
-            gh release create v2.0.3 dist/Downloader-Android-arm64-v2.0.3.apk \
+            gh release create v2.0.4 dist/Downloader-Android-arm64-v2.0.4.apk \
               --target "$GITHUB_SHA" \
-              --title "Downloader Android v2.0.3" \
-              --notes "Native engine 2.0.3: added YouTube progressive stream resolution, fixed Twitch playback queries, checked video containers and HLS durations before completing, retained pause/resume and per-site folders. Restricted media may remain unavailable. Android 10+, ARM64."
+              --title "Downloader Android v2.0.4" \
+              --notes "Native engine 2.0.4: fix unlimited URL checking and UI preview hangs, safeguard video transfer timeouts, retain pause/resume, site folders and validation. Android 10+, ARM64."
           fi
       - name: Missing permanent signing secrets
         if: env.SIGNING_AVAILABLE != 'true'
