@@ -211,6 +211,23 @@ class NativeEngineTest {
     }
 
     @Test
+    fun refusesShortHlsTeaserWhenWholeVideoIsMuchLonger() {
+        endpoint("/preview.m3u8", "application/vnd.apple.mpegurl",
+            "#EXTM3U\n#EXTINF:4.0,\ntiny.ts\n#EXT-X-ENDLIST\n")
+        val page = "$host/preview.m3u8"
+        val temp = Files.createTempDirectory("reject-preview").toFile()
+        try {
+            val info = MediaInfo(page,page,"Full video",kind="hls",
+                expectedDurationSeconds=180L)
+            val thrown = runCatching {
+                NativeTransfer().transfer(info, 720, temp) { _,_,_ -> }
+            }.exceptionOrNull()
+            assertTrue(thrown is java.io.IOException)
+            assertTrue(thrown!!.message.orEmpty().contains("предпросмотр"))
+        } finally { temp.deleteRecursively() }
+    }
+
+    @Test
     fun resumesTransferByHttpRange() {
         val bytes = "ABCDEFGHIJKL".toByteArray()
         rangedBody = bytes
