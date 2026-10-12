@@ -149,6 +149,9 @@ class NativeTransfer {
             active = conn
             try {
                 if (conn.responseCode !in 200..299) NativeEngine.errorHttp(conn)
+                val segmentLength = conn.contentLengthLong.coerceAtLeast(0L)
+                var segmentDownloaded = 0L
+                var lastReport = 0L
                 conn.inputStream.use { stream ->
                     FileOutputStream(temporary).buffered(65536).use { dest ->
                         val buffer = ByteArray(65536)
@@ -156,7 +159,18 @@ class NativeTransfer {
                             check()
                             val read = stream.read(buffer)
                             if (read < 0) break
-                            dest.write(buffer,0,read)
+                            dest.write(buffer, 0, read)
+                            segmentDownloaded += read
+                            val now = SystemClock.elapsedRealtime()
+                            if (now - lastReport >= 300L || lastReport == 0L) {
+                                lastReport = now
+                                val percentWithin = if (segmentLength > 0) {
+                                    (segmentDownloaded.toDouble() / segmentLength).coerceIn(0.0, 0.999)
+                                } else 0.0
+                                val currentPercent = ((i + percentWithin) * 100.0 / count)
+                                    .toInt().coerceIn(0, 99)
+                                progress(bytes + segmentDownloaded, 0, currentPercent)
+                            }
                         }
                     }
                 }
