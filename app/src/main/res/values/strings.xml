@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Downloader</string>
+    <string-array name="engine_options">
+        <item>Kotlin · быстрый и лёгкий</item>
+        <item>yt-dlp + FFmpeg · прежний движок</item>
+    </string-array>
     <string-array name="quality_options">
         <item>Лучшее доступное</item>
         <item>1080p</item>
