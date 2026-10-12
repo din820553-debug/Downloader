@@ -69,6 +69,21 @@ jobs:
           path: dist/*.apk
           retention-days: 30
 
+      - name: Verify installation and launch on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            adb install -r dist/Downloader-TEST-v2.0.4.apk
+            adb shell pm path com.dindownloader.app.preview
+            adb shell am start -W -n com.dindownloader.app.preview/com.dindownloader.app.MainActivity
+            adb shell dumpsys package com.dindownloader.app.preview | grep -m 1 'versionName=2.0.4-test'
+
       - name: Publish direct TEST APK (separate app)
         if: env.SIGNING_AVAILABLE != 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
