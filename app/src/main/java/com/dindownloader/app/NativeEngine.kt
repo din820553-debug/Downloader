@@ -60,9 +60,15 @@ object NativeEngine {
              range: String? = null): HttpURLConnection {
         require(url.startsWith("https://") || url.startsWith("http://")) { "Только HTTP(S)-ссылки" }
         val connection = (URL(url).openConnection() as HttpURLConnection)
-        val remaining = previewTimeLeftMs()
-        connection.connectTimeout = minOf(14000, remaining, 5000)
-        connection.readTimeout = minOf(25000, remaining, 5500)
+        if (previewDeadline.get() != null) {
+            val remaining = previewTimeLeftMs()
+            connection.connectTimeout = minOf(5000, remaining)
+            connection.readTimeout = minOf(5500, remaining)
+        } else {
+            // Large video transfers keep the longer read timeout.
+            connection.connectTimeout = 14000
+            connection.readTimeout = 25000
+        }
         connection.instanceFollowRedirects = true
         connection.requestMethod = method
         connection.setRequestProperty("User-Agent",
