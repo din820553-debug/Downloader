@@ -91,6 +91,65 @@ class NativeEngineTest {
     }
 
     @Test
+    fun recognizesTwitchVodsAndClips() {
+        assertEquals("12345678", TwitchResolver.identify(
+            "https://www.twitch.tv/videos/12345678")?.vod)
+        assertEquals("HappyBraveSloth-Test", TwitchResolver.identify(
+            "https://clips.twitch.tv/HappyBraveSloth-Test")?.clip)
+        assertEquals("HappyBraveSloth-Test", TwitchResolver.identify(
+            "https://www.twitch.tv/streamer/clip/HappyBraveSloth-Test")?.clip)
+        assertNull(TwitchResolver.identify("https://not-twitch.tv/videos/12345678"))
+    }
+
+    @Test
+    fun twitchClipChoosesQualityAndSignsUrl() {
+        val data = JSONObject().put("clip", JSONObject()
+            .put("title", "Test clip")
+            .put("playbackAccessToken", JSONObject()
+                .put("signature", "signature!").put("value", "{\"ok\":true}"))
+            .put("videoQualities", org.json.JSONArray()
+                .put(JSONObject().put("quality", "1080").put("sourceURL", "https://cdn.example/1080.mp4"))
+                .put(JSONObject().put("quality", "720").put("sourceURL", "https://cdn.example/720.mp4"))))
+        val selected = TwitchResolver.clipFromData("https://clips.twitch.tv/ExampleClip", data, 720)
+        assertTrue(selected.mediaUrl.contains("/720.mp4"))
+        assertTrue(selected.mediaUrl.contains("sig="))
+        assertTrue(selected.mediaUrl.contains("token="))
+        assertEquals("Test clip", selected.title)
+    }
+
+    @Test
+    fun twitchVodProducesAuthenticatedHls() {
+        val request = TwitchResolver.vodRequest("1122334455")
+        assertTrue(request.getString("query").contains("$" + "vodID"))
+        val data = JSONObject().put("videoPlaybackAccessToken", JSONObject()
+            .put("signature", "sigABC").put("value", "{\"chansub\":true}"))
+        val media = TwitchResolver.vodFromData(
+            "https://www.twitch.tv/videos/1122334455", "1122334455", data)
+        assertTrue(media.mediaUrl.startsWith("https://usher.ttvnw.net/vod/1122334455.m3u8"))
+        assertTrue(media.mediaUrl.contains("sig=sigABC"))
+        assertEquals("hls", media.kind)
+    }
+
+    @Test
+    fun hlsReportsBytesBeforeSegmentCompletes() {
+        endpoint("/media.m3u8", "application/vnd.apple.mpegurl",
+            "#EXTM3U\n#EXT-X-TARGETDURATION:5\n#EXTINF:5,\nlarge.ts\n#EXT-X-ENDLIST\n")
+        val content = "X".repeat(240_000)
+        endpoint("/large.ts", "video/mp2t", content)
+        val temp = Files.createTempDirectory("hls-progress").toFile()
+        try {
+            var intermediate = false
+            val link = "$host/media.m3u8"
+            val finished = NativeTransfer().transfer(MediaInfo(link, link, "video", kind="hls"),
+                0, temp) { bytes, _, percent ->
+                if (bytes > 0 && bytes < content.length && percent < 100) intermediate = true
+            }
+            assertTrue("HLS progress must update during a segment", intermediate)
+            assertEquals(content.length.toLong(), finished.file.length())
+        } finally { temp.deleteRecursively() }
+    }
+
+    @Test
     fun resumesTransferByHttpRange() {
         val bytes = "ABCDEFGHIJKL".toByteArray()
         rangedBody = bytes
