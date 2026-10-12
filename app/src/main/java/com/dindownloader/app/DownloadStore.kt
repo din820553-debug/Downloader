@@ -25,7 +25,8 @@ data class DownloadJob(
     val downloadedBytes: Long = 0L,
     val totalBytes: Long = 0L,
     val savedUris: List<String> = emptyList(),
-    val directMediaUrl: String? = null
+    val directMediaUrl: String? = null,
+    val engine: String = "native"
 )
 
 object DownloadStore {
@@ -73,7 +74,8 @@ object DownloadStore {
                         downloadedBytes = obj.optLong("downloadedBytes", 0L),
                         totalBytes = obj.optLong("totalBytes", 0L),
                         savedUris = uris,
-                        directMediaUrl = obj.optString("directMediaUrl").takeIf(String::isNotBlank)
+                        directMediaUrl = obj.optString("directMediaUrl").takeIf(String::isNotBlank),
+                        engine = if (obj.optString("engine") == "legacy") "legacy" else "native"
                     )
                 )
             }
@@ -88,11 +90,11 @@ object DownloadStore {
     fun add(
         url: String, title: String, format: String, quality: Int,
         playlist: Boolean, thumbnailUrl: String? = null, totalBytes: Long = 0L,
-        directMediaUrl: String? = null
+        directMediaUrl: String? = null, engine: String = "native"
     ): DownloadJob {
         val job = DownloadJob(UUID.randomUUID().toString(), url, title, format, quality, playlist,
             thumbnailUrl = thumbnailUrl, totalBytes = totalBytes,
-            directMediaUrl = directMediaUrl)
+            directMediaUrl = directMediaUrl, engine = if (engine == "legacy") "legacy" else "native")
         records.add(0, job)
         while (records.size > 60) records.removeAt(records.lastIndex)
         persist()
@@ -157,6 +159,7 @@ object DownloadStore {
             data.put("totalBytes", job.totalBytes)
             data.put("savedUris", JSONArray(job.savedUris))
             data.put("directMediaUrl", job.directMediaUrl ?: "")
+            data.put("engine", job.engine)
             array.put(data)
         }
         app.getSharedPreferences("downloads", Context.MODE_PRIVATE)
