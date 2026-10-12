@@ -17,6 +17,8 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -33,7 +35,9 @@ class SiteActivity : AppCompatActivity() {
     private lateinit var address: EditText
     private lateinit var status: TextView
     private lateinit var session: TextView
-    private val found = LinkedHashSet<String>()
+    private val found = LinkedHashMap<String, OpenVideoStream>()
+    private val worker = Executors.newSingleThreadExecutor()
+    private val busyUpdate = AtomicBoolean(false)
     private var jobId: String? = null
 
     private fun dp(n: Int) = (n * resources.displayMetrics.density + 0.5f).toInt()
@@ -90,6 +94,18 @@ class SiteActivity : AppCompatActivity() {
         actions.addView(button("Найти поток", "#294463") { scanMedia() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         root.addView(actions)
+        val updateButton = button("Обновить движок загрузки", "#223654") {
+            AlertDialog.Builder(this)
+                .setTitle("Обновление экстрактора")
+                .setMessage("Загрузить обновление yt-dlp из официального репозитория? " +
+                    "Это изменяет исполняемый компонент приложения. Действие добровольное.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Обновить") { _, _ ->
+                    if (!busyUpdate.compareAndSet(false, true)) return@setPositiveButton
+                    updateButtonStart()
+                }.show()
+        }
+        root.addView(updateButton, LinearLayout.LayoutParams(-1, dp(44)))
 
         session = TextView(this).apply {
             textSize = 11f
@@ -236,51 +252,160 @@ class SiteActivity : AppCompatActivity() {
             Intent(this, DownloadService::class.java).setAction(DownloadService.ACTION_START))
     }
 
-    private fun rememberMedia(url: String) {
-        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return
-        if (uri.scheme != "https") return
-        val path = uri.path.orEmpty().lowercase()
-        if (path.endsWith(".mp4") || path.endsWith(".m3u8") ||
-            path.endsWith(".webm") || path.endsWith(".m4v")) {
-            synchronized(found) { if (found.size < 100) found.add(url) }
+    private fun updateButtonStart() {
+        status.text = "Обновляем движок по твоему запросу…"
+        worker.execute {
+            val failure = runCatching {
+                LegacyYtDlpEngine.updateExtractor(applicationContext)
+            }.exceptionOrNull()
+            runOnUiThread {
+                busyUpdate.set(false)
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                status.text = if (failure == null)
+                    "Экстрактор обновлён. Можешь повторить скачивание."
+                else "Не удалось обновить: " + failure.localizedMessage.orEmpty().take(200)
+            }
+        }
+    }
+
+    private fun rememberMedia(url: String, quality: Int = 0, label: String = "") {
+        if (!OpenVideoStreams.isMediaRequest(url)) return
+        synchronized(found) {
+            if (found.size < 150 && !found.containsKey(url))
+                found[url] = OpenVideoStream(url, quality, label)
         }
     }
 
     private fun scanMedia() {
+        status.text = "Ищем варианты качества в загруженном плеере…"
         browser.evaluateJavascript("""
-            (function() {
-              var found=[];
-              document.querySelectorAll('video,source').forEach(function(el) {
-                [el.src,el.currentSrc].forEach(function(url) {
-                  if(url && url.indexOf('blob:') !== 0) found.push(url);
+            (function(){
+              var out=[], seen={};
+              function add(url,quality,label){
+                try {
+                  if (!url || typeof url !== "string" || url.slice(0,5)==="blob:") return;
+                  url=new URL(url,location.href).href;
+                  if (url.slice(0,8)!=="https://") return;
+                  if (seen[url]) return;
+                  seen[url]=true;
+                  out.push({url:url,quality:parseInt(quality,10)||0,label:label||""});
+                } catch(e){}
+              }
+              function definitions(config){
+                if(!config || typeof config !== "object") return;
+                var values=config.mediaDefinitions;
+                if(Array.isArray(values)) values.forEach(function(e){
+                    if(e && e.videoUrl) add(e.videoUrl,e.quality,"Плеер");
                 });
-              });
-              try { performance.getEntriesByType('resource').forEach(function(r) {
-                if(r.name) found.push(r.name);
-              }); } catch(e) {}
-              return JSON.stringify(found.slice(-120));
+              }
+              try {
+                Object.keys(window).filter(function(k){return /^flashvars_[0-9]+$/.test(k);})
+                   .slice(0,10).forEach(function(k){definitions(window[k]);});
+              } catch(e){}
+              try {
+                document.querySelectorAll("video,source").forEach(function(el){
+                  add(el.currentSrc,el.getAttribute("height"),"Видео");
+                  add(el.src,el.getAttribute("height"),"Видео");
+                });
+              }catch(e){}
+              try {
+                document.querySelectorAll("script:not([src])").forEach(function(el){
+                  var txt=el.textContent||"";
+                  if(txt.length>1500000) return;
+                  var re=/["']videoUrl["']\s*:\s*["']((?:\\.|[^"'\\])+)["']/g;
+                  var match, count=0;
+                  while((match=re.exec(txt)) && count++<80){
+                     var raw=match[1].replace(/\\\//g,"/").replace(/\\u002[fF]/g,"/");
+                     var tail=txt.slice(match.index,match.index+150);
+                     var qual=tail.match(/["']quality["']\s*:\s*["']?(\d+)/);
+                     add(raw,qual?qual[1]:0,"Скрипт");
+                  }
+                });
+              } catch(e){}
+              try{
+                performance.getEntriesByType("resource").forEach(function(r){
+                  if(r.name && /\.(mp4|m3u8|webm|mpd)(?:$|\?)/i.test(r.name))
+                    add(r.name,0,"Запрос");
+                });
+              }catch(e){}
+              return JSON.stringify(out.slice(0,150));
             })();
-        """.trimIndent()) { result ->
-            try {
-                val str = JSONTokener(result).nextValue() as? String ?: return@evaluateJavascript
-                val arr = JSONArray(str)
-                for (i in 0 until arr.length()) rememberMedia(arr.optString(i))
-            } catch (_: Exception) {}
-            val links = synchronized(found) { found.toList() }
-            if (links.isEmpty()) {
-                message("Включи видео кнопкой Play или нажми «Скачать видео»")
-                return@evaluateJavascript
+        """.trimIndent()) { encoded ->
+            val page = videoPage() ?: return@evaluateJavascript
+            val discovered = try {
+                val raw = JSONTokener(encoded).nextValue() as? String ?: "[]"
+                OpenVideoStreams.fromBrowserResult(raw, page)
+            } catch (_: Exception) { emptyList() }
+            synchronized(found) {
+                for (stream in discovered) {
+                    if (found.size < 150 && !found.containsKey(stream.url))
+                        found[stream.url] = stream
+                }
             }
-            AlertDialog.Builder(this).setTitle("Найденные открытые потоки")
-                .setItems(links.map { (Uri.parse(it).host ?: "Медиа") + " · " + it.takeLast(54) }
-                    .toTypedArray()) { _, chosen ->
-                    val page = videoPage() ?: return@setItems
-                    val job = DownloadStore.add(page, browser.title ?: "Видео",
-                        "auto", 0, false, directMediaUrl = links[chosen], engine = "native")
-                    jobId = job.id
-                    startDownloads()
-                }.setNegativeButton("Отмена", null).show()
+            val endpoints = synchronized(found) {
+                found.values.filter { OpenVideoStreams.isQualityEndpoint(it.url) }
+                    .take(4)
+            }
+            if (endpoints.isEmpty()) {
+                showStreams(page)
+            } else {
+                status.text = "Получаем доступные варианты качества…"
+                worker.execute {
+                    val variants = mutableListOf<OpenVideoStream>()
+                    for (source in endpoints) {
+                        try {
+                            val json = NativeEngine.text(source.url, page, 750_000)
+                            variants.addAll(OpenVideoStreams.fromQualityApi(json, source.url))
+                        } catch (_: Exception) { /* Keep already discovered streams. */ }
+                    }
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        synchronized(found) {
+                            for (stream in variants)
+                                if (found.size < 180) found[stream.url] = stream
+                        }
+                        showStreams(page)
+                    }
+                }
+            }
         }
+    }
+
+    private fun showStreams(page: String) {
+        val streams = synchronized(found) {
+            found.values.filterNot { OpenVideoStreams.isQualityEndpoint(it.url) }
+                .sortedWith(compareByDescending<OpenVideoStream> { it.quality })
+        }
+        if (streams.isEmpty()) {
+            status.text = "Прямые ссылки не найдены. Попробуй запустить видео или обновить движок."
+            return
+        }
+        status.text = "Найдено открытых потоков: " + streams.size
+        val rows = streams.map {
+            val format = when {
+                it.url.contains(".m3u8", true) -> "HLS"
+                it.url.contains(".mpd", true) -> "DASH"
+                it.url.contains(".mp4", true) -> "MP4"
+                else -> "Медиа"
+            }
+            (if (it.quality > 0) it.quality.toString() + "p" else "Качество неизвестно") +
+                " · " + format + " · " + (Uri.parse(it.url).host ?: "источник")
+        }.toTypedArray()
+        AlertDialog.Builder(this).setTitle("Выбери качество")
+            .setItems(rows) { _, selected ->
+                val stream = streams[selected]
+                AlertDialog.Builder(this).setTitle("Способ скачивания")
+                    .setItems(arrayOf("yt-dlp + FFmpeg (рекомендуется)",
+                        "Прямая загрузка Kotlin")) { _, option ->
+                        val selectedEngine = if (option == 0) "legacy" else "native"
+                        val item = DownloadStore.add(page, browser.title ?: "Видео",
+                            "auto", stream.quality, false, directMediaUrl = stream.url,
+                            engine = selectedEngine)
+                        jobId = item.id
+                        status.text = "Начинаем скачивание · " + rows[selected]
+                        startDownloads()
+                    }.setNegativeButton("Отмена", null).show()
+            }.setNegativeButton("Отмена", null).show()
     }
 
     @Deprecated("WebView back navigation")
@@ -292,6 +417,7 @@ class SiteActivity : AppCompatActivity() {
         CookieManager.getInstance().flush()
         browser.stopLoading()
         browser.destroy()
+        worker.shutdownNow()
         super.onDestroy()
     }
 }
