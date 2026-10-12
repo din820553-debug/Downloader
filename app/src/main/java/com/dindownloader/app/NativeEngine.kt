@@ -95,23 +95,40 @@ object NativeEngine {
         Html.fromHtml(s, Html.FROM_HTML_MODE_LEGACY).toString().trim().take(180)
 
     private fun readHead(url: String, referer: String?): Pair<String, Long> {
-        val c = http(url, "HEAD", referer)
+        // Some video CDNs reject HEAD but accept GET with a byte-range request.
+        val head = http(url, "HEAD", referer)
         try {
-            val code = c.responseCode
-            if (code !in 200..299) return "" to 0L
-            return (c.contentType ?: "").lowercase(Locale.ROOT) to c.contentLengthLong.coerceAtLeast(0)
-        } finally { c.disconnect() }
+            if (head.responseCode in 200..299) {
+                val mime = (head.contentType ?: "").lowercase(Locale.ROOT)
+                if (mime.isNotBlank()) return mime to head.contentLengthLong.coerceAtLeast(0L)
+            }
+        } finally { head.disconnect() }
+        val get = http(url, "GET", referer, "bytes=0-0")
+        try {
+            if (get.responseCode !in 200..299) errorHttp(get)
+            val mime = (get.contentType ?: "").lowercase(Locale.ROOT)
+            val total = Regex("""/(\d+)""")
+                .find(get.getHeaderField("Content-Range").orEmpty())
+                ?.groupValues?.get(1)?.toLongOrNull()
+                ?: get.contentLengthLong.coerceAtLeast(0L)
+            return mime to total
+        } finally { get.disconnect() }
     }
 
     fun probe(url: String, quality: Int = 0, referer: String? = null): MediaInfo {
         require(url.startsWith("https://") || url.startsWith("http://")) { "Нужна HTTP(S)-ссылка" }
+        if (TwitchResolver.identify(url) != null) {
+            return TwitchResolver.resolve(url, quality)
+                ?: throw IOException("Не удалось найти медиапоток Twitch")
+        }
         val ext = Uri.parse(url).lastPathSegment?.substringBefore('?')?.substringAfterLast('.')?.lowercase() ?: ""
         val (mime, length) = try { readHead(url, referer) } catch (_: Exception) { "" to 0L }
         val hls = ext == "m3u8" || "mpegurl" in mime
         if (hls) {
             return MediaInfo(url, url, fileTitle(url), kind = "hls", mime = "application/x-mpegURL")
         }
-        if (ext in setOf("mp4", "webm", "m4v", "mov", "mp3", "m4a", "aac", "ts", "mkv")
+        if ((ext in setOf("mp4", "webm", "m4v", "mov", "mp3", "m4a", "aac", "ts", "mkv")
+            && !mime.contains("text/html") && !mime.contains("json"))
             || mime.startsWith("video/") || mime.startsWith("audio/")) {
             return MediaInfo(url, url, fileTitle(url), estimatedBytes = length,
                 mime = if (mime.startsWith("video/") || mime.startsWith("audio/")) mime
@@ -132,6 +149,7 @@ object NativeEngine {
             try {
                 val (kindMime, bytes) = readHead(link, url)
                 val fileExt = Uri.parse(link).path?.substringAfterLast('.')?.lowercase() ?: ""
+                if (kindMime.contains("text/html")) continue
                 if ("mpegurl" in kindMime || fileExt == "m3u8") {
                     return MediaInfo(url, link, title, picture, kind = "hls",
                         referer = url, mime = "application/x-mpegURL")
