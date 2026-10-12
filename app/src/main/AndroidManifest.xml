@@ -7,6 +7,7 @@
 
     <application
         android:allowBackup="false"
+        android:extractNativeLibs="true"
         android:label="${appLabel}"
         android:icon="@drawable/ic_download"
         android:roundIcon="@drawable/ic_download"
