@@ -109,6 +109,15 @@ class NativeEngineTest {
     }
 
     @Test
+    fun probesMediaWithoutExtensionCapturedFromBrowser() {
+        endpoint("/stream", "video/mp4", "dummy bytes")
+        val actual = NativeEngine.probe("$host/stream?token=abc", referer="$host/watch")
+        assertEquals("file", actual.kind)
+        assertEquals("$host/stream?token=abc", actual.mediaUrl)
+        assertEquals("video/mp4", actual.mime)
+    }
+
+    @Test
     fun recognizesLegacyTwitchVodsFromScreenshot() {
         val old = "https://www.twitch.tv/steel/v/28944715"
         assertEquals("28944715", TwitchResolver.identify(old)?.vod)
