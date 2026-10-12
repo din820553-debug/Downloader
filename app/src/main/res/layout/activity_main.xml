@@ -223,6 +223,28 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="18dp"
+                    android:text="Движок загрузки"
+                    android:textColor="#E5EDFF"
+                    android:textSize="14sp" />
+                <Spinner
+                    android:id="@+id/engineSpinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:entries="@array/engine_options"
+                    android:spinnerMode="dropdown" />
+                <TextView
+                    android:id="@+id/engineHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="Kotlin: без дополнительных компонентов"
+                    android:textColor="#8EA5CB"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
                     android:text="Формат"
                     android:textColor="#E5EDFF"
                     android:textSize="14sp" />
