@@ -51,12 +51,14 @@ jobs:
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk dist/Downloader-TEST-v2.1.0.apk
-          cp siteapp/build/outputs/apk/debug/siteapp-debug.apk dist/VideoSpace-Standalone-v1.0.0.apk
+          cp siteapp/build/outputs/apk/debug/siteapp-debug.apk dist/VideoSpace-Standalone-v1.0.1.apk
           if [ "$SIGNING_AVAILABLE" = "true" ]; then
             cp app/build/outputs/apk/release/app-release.apk dist/Downloader-Android-arm64-v2.1.0.apk
           fi
           ls -lh dist/*.apk
-          echo "::notice::VideoSpace is a separate package with browser login and an optional temporary cookie jar for yt-dlp."
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/VideoSpace-Standalone-v1.0.1.apk | grep -F "com.dindownloader.sitevideo"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/VideoSpace-Standalone-v1.0.1.apk | grep -F "versionName='1.0.1'"
+          echo "::notice::VideoSpace supports manual extractor updates, account sign-in via WebView and selectable open media streams."
       - name: Warn about the larger legacy engine APK
         run: |
           find dist -type f -name '*.apk' -printf '%f: %s bytes\\n'
