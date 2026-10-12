@@ -27,12 +27,34 @@ data class SegmentInfo(val url: String, val init: Boolean = false)
 data class PlaylistInfo(val segments: List<SegmentInfo>, val format: String, val durationSeconds: Double = 0.0)
 
 object NativeEngine {
+    // UI previews must not monopolize the request worker when a site is down.
+    // Background file transfers use the regular, longer network timeouts.
+    private val previewDeadline = ThreadLocal<Long>()
+
+    private fun previewTimeLeftMs(): Int {
+        val deadline = previewDeadline.get() ?: return Int.MAX_VALUE
+        val left = (deadline - System.nanoTime()) / 1_000_000L
+        if (left <= 0 || Thread.currentThread().isInterrupted) {
+            throw java.net.SocketTimeoutException("Превышено время проверки ссылки (12 секунд)")
+        }
+        return left.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
+    }
+
+    fun previewProbe(url: String, quality: Int = 0, referer: String? = null): MediaInfo {
+        previewDeadline.set(System.nanoTime() + 12_000_000_000L)
+        try {
+            return probe(url, quality, referer)
+        } finally {
+            previewDeadline.remove()
+        }
+    }
     fun http(url: String, method: String = "GET", referer: String? = null,
              range: String? = null): HttpURLConnection {
         require(url.startsWith("https://") || url.startsWith("http://")) { "Только HTTP(S)-ссылки" }
         val connection = (URL(url).openConnection() as HttpURLConnection)
-        connection.connectTimeout = 14000
-        connection.readTimeout = 25000
+        val remaining = previewTimeLeftMs()
+        connection.connectTimeout = minOf(14000, remaining, 5000)
+        connection.readTimeout = minOf(25000, remaining, 5500)
         connection.instanceFollowRedirects = true
         connection.requestMethod = method
         connection.setRequestProperty("User-Agent",
@@ -64,6 +86,7 @@ object NativeEngine {
             c.inputStream.use { input ->
                 val data = ByteArray(32768)
                 while (true) {
+                    previewTimeLeftMs()
                     val size = input.read(data)
                     if (size < 0) break
                     if (out.size() + size > maxBytes) throw IOException("Ответ слишком большой")
@@ -137,7 +160,14 @@ object NativeEngine {
                 ?: throw IOException("Не удалось найти медиапоток Twitch")
         }
         val ext = Uri.parse(url).lastPathSegment?.substringBefore('?')?.substringAfterLast('.')?.lowercase() ?: ""
-        val (mime, length) = try { readHead(url, referer) } catch (_: Exception) { "" to 0L }
+        // Page URLs are not media: skip a redundant HEAD + GET round trip.
+        val directMedia = ext in setOf("mp4","webm","m4v","mov","mp3","m4a","aac","ts","mkv","m3u8")
+        val (mime, length) = if (directMedia) {
+            try { readHead(url, referer) } catch (e: Exception) {
+                previewTimeLeftMs()
+                "" to 0L
+            }
+        } else "" to 0L
         val hls = ext == "m3u8" || "mpegurl" in mime
         if (hls) {
             return MediaInfo(url, url, fileTitle(url), kind = "hls", mime = "application/x-mpegURL")
@@ -165,7 +195,8 @@ object NativeEngine {
         if (candidates.isEmpty()) {
             throw IOException("Прямая ссылка на медиа не найдена. Сайт может требовать вход, JavaScript или защищать поток")
         }
-        for (link in candidates.take(15)) {
+        for (link in candidates.take(if (previewDeadline.get() != null) 4 else 15)) {
+            previewTimeLeftMs()
             try {
                 val (kindMime, bytes) = readHead(link, url)
                 val fileExt = Uri.parse(link).path?.substringAfterLast('.')?.lowercase() ?: ""
@@ -205,7 +236,9 @@ object NativeEngine {
                         }
                     }
                 }
-            } catch (_: IOException) { }
+            } catch (e: IOException) {
+                previewTimeLeftMs()
+            }
         }
         throw IOException("Сайт не предоставил доступный видеопоток. Открой страницу во встроенном браузере и повтори")
     }
