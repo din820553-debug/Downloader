@@ -120,6 +120,36 @@ class NativeEngineTest {
     }
 
     @Test
+    fun recognizesVideoPagesAndSeparatesHomepage() {
+        assertFalse(OpenVideoStreams.isVideoPage("https://example.org/"))
+        assertFalse(OpenVideoStreams.isVideoPage("https://example.org/search?q=videos"))
+        assertTrue(OpenVideoStreams.isVideoPage(
+            "https://example.org/view_video.php?viewkey=abcdef12345"))
+        assertTrue(OpenVideoStreams.isVideoPage("https://example.org/embed/abcdef12345"))
+        assertTrue(OpenVideoStreams.isVideoPage("https://example.org/video/file.mp4"))
+    }
+
+    @Test
+    fun interpretsPlayerQualityMetadataAndJsonEndpoint() {
+        val fromBrowser = OpenVideoStreams.fromBrowserResult(
+            """[{"url":"https://cdn.example.net/watch/movie-720.m3u8","quality":720},
+                 {"url":"https://cdn.example.net/watch/movie-360.m3u8","quality":360},
+                 {"url":"blob:https://example.org/random","quality":1080}]""",
+            "https://example.org/view_video.php?viewkey=abc")
+        assertEquals(2, fromBrowser.size)
+        assertEquals(720, fromBrowser.first().quality)
+        assertTrue(OpenVideoStreams.isQualityEndpoint(
+            "https://example.org/video/get_media?s=123"))
+        val options = OpenVideoStreams.fromQualityApi(
+            """[{"videoUrl":"https://cdn.example.net/file720.mp4","quality":"720"},
+                 {"videoUrl":"https://cdn.example.net/file1080.m3u8","quality":"1080"}]""",
+            "https://example.org/video/get_media?s=123")
+        assertEquals(1080, options.first().quality)
+        assertTrue(options.first().url.endsWith("file1080.m3u8"))
+        assertEquals(2, options.size)
+    }
+
+    @Test
     fun recognizesTwitchVodsAndClips() {
         assertEquals("12345678", TwitchResolver.identify(
             "https://www.twitch.tv/videos/12345678")?.vod)
