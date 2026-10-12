@@ -35,13 +35,21 @@ object NativeEngine {
         val deadline = previewDeadline.get() ?: return Int.MAX_VALUE
         val left = (deadline - System.nanoTime()) / 1_000_000L
         if (left <= 0 || Thread.currentThread().isInterrupted) {
-            throw java.net.SocketTimeoutException("Превышено время проверки ссылки (12 секунд)")
+            throw java.net.SocketTimeoutException("Истекло время определения видеопотока")
         }
         return left.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
     }
 
-    fun previewProbe(url: String, quality: Int = 0, referer: String? = null): MediaInfo {
-        previewDeadline.set(System.nanoTime() + 12_000_000_000L)
+    fun previewProbe(url: String, quality: Int = 0, referer: String? = null): MediaInfo =
+        boundedProbe(url, quality, referer, 12_000)
+
+    fun resolveForDownload(url: String, quality: Int = 0, referer: String? = null): MediaInfo =
+        boundedProbe(url, quality, referer, 25_000)
+
+    internal fun boundedProbe(
+        url: String, quality: Int, referer: String?, timeoutMs: Long
+    ): MediaInfo {
+        previewDeadline.set(System.nanoTime() + timeoutMs * 1_000_000L)
         try {
             return probe(url, quality, referer)
         } finally {
