@@ -46,7 +46,7 @@ class BrowserActivity : AppCompatActivity() {
             setBackgroundColor(Color.rgb(11, 16, 32))
         }
         info = TextView(this).apply {
-            text = "Открой видео и нажми воспроизведение. Перехвачено потоков: 0"
+            text = "Нажми Play на странице. Затем «Найти» и «Использовать поток»."
             setTextColor(Color.WHITE)
             textSize = 13f
             setPadding(dp(14), dp(12), dp(14), dp(8))
@@ -93,7 +93,9 @@ class BrowserActivity : AppCompatActivity() {
                 override fun shouldInterceptRequest(
                     view: WebView, request: WebResourceRequest
                 ): android.webkit.WebResourceResponse? {
-                    maybeRecord(request.url.toString())
+                    maybeRecord(request.url.toString(),
+                        request.requestHeaders["Accept"]?.contains("video/") == true ||
+                        request.requestHeaders["Sec-Fetch-Dest"] == "video")
                     return super.shouldInterceptRequest(view, request)
                 }
                 override fun onPageFinished(view: WebView, url: String) {
@@ -117,15 +119,27 @@ class BrowserActivity : AppCompatActivity() {
         web.evaluateJavascript("""
             (function() {
               var urls = [];
-              document.querySelectorAll('video,source').forEach(function(el) {
-                if (el.src && el.src.indexOf('blob:') !== 0) urls.push(el.src);
-              });
+              function collect(doc) {
+                try {
+                  doc.querySelectorAll('video,source').forEach(function(el) {
+                    [el.currentSrc,el.src,el.getAttribute('src')].forEach(function(v) {
+                      if (v && !v.startsWith('blob:')) {
+                        try { urls.push(new URL(v,doc.baseURI).href); } catch (_) {}
+                      }
+                    });
+                  });
+                  doc.querySelectorAll('iframe').forEach(function(frame) {
+                    try { if (frame.contentDocument) collect(frame.contentDocument); } catch (_) {}
+                  });
+                } catch (_) {}
+              }
+              collect(document);
               try {
                 performance.getEntriesByType('resource').forEach(function(e) {
                   if (e.name) urls.push(e.name);
                 });
-              } catch(e) {}
-              return JSON.stringify(urls);
+              } catch (_) {}
+              return JSON.stringify(urls.slice(-200));
             })();
         """.trimIndent()) { raw ->
             try {
@@ -138,7 +152,7 @@ class BrowserActivity : AppCompatActivity() {
         }
     }
 
-    private fun maybeRecord(url: String) {
+    private fun maybeRecord(url: String, mediaHint: Boolean = false) {
         val lower = url.lowercase()
         if (!url.startsWith("http://") && !url.startsWith("https://")) return
         val segment = android.net.Uri.parse(url).path.orEmpty().lowercase()
@@ -146,14 +160,14 @@ class BrowserActivity : AppCompatActivity() {
             !segment.endsWith(".webm") && !segment.endsWith(".m4a") &&
             !segment.endsWith(".mp3") && !segment.endsWith(".mov") &&
             !lower.contains("manifest.m3u8") &&
-            !lower.contains("playlist.m3u8")) return
+            !lower.contains("playlist.m3u8") && !mediaHint) return
         synchronized(found) {
             if (found.size < 80) found.add(url)
         }
         runOnUiThread {
             if (!isDestroyed) {
                 info.text = "Найдено медиассылок: " + synchronized(found) { found.size } +
-                    ". Выбери поток после запуска видео."
+                    ". Нажми «Использовать поток» для выбора."
                 choose.isEnabled = found.isNotEmpty()
             }
         }
@@ -164,7 +178,14 @@ class BrowserActivity : AppCompatActivity() {
         if (links.isEmpty()) return
         val labels = links.map { link ->
             val uri = android.net.Uri.parse(link)
-            (uri.host ?: "Медиа") + " · " + (uri.path?.takeLast(75) ?: "файл")
+            val kind = when {
+                uri.path.orEmpty().endsWith(".m3u8", ignoreCase = true) -> "HLS"
+                uri.path.orEmpty().endsWith(".mp4", ignoreCase = true) -> "MP4"
+                uri.path.orEmpty().endsWith(".webm", ignoreCase = true) -> "WebM"
+                else -> "Медиа"
+            }
+            kind + " · " + (uri.host ?: "источник") + " · " +
+                (uri.path?.takeLast(55) ?: "файл")
         }
         AlertDialog.Builder(this)
             .setTitle("Выбрать обнаруженный поток")
