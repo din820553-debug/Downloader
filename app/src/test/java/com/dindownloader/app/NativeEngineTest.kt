@@ -125,8 +125,8 @@ class NativeEngineTest {
 
     @Test
     fun scansEscapedUrlsInEmbeddedPlayerConfig() {
-        val html = """<script>var player={"file":"https:\\/\\/cdn.example.com\\/archive\\/full.m3u8",
-            "src":"https:\\u002F\\u002Fcdn.example.com\\u002Ffull.mp4"};</script>"""
+        val html = """<script>var player={"file":"https:\/\/cdn.example.com\/archive\/full.m3u8",
+            "src":"https:\u002F\u002Fcdn.example.com\u002Ffull.mp4"};</script>"""
         val links = NativeEngine.extractCandidates("https://example.net/view/123", html)
         assertTrue(links.toString(), links.contains("https://cdn.example.com/archive/full.m3u8"))
         assertTrue(links.toString(), links.contains("https://cdn.example.com/full.mp4"))
