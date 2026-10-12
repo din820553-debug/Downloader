@@ -166,7 +166,9 @@ class SiteActivity : AppCompatActivity() {
         setContentView(root)
         updateSession()
         DownloadStore.changes.observe(this) { jobs ->
-            val job = jobs.firstOrNull { it.id == jobId } ?: return@observe
+            val job = jobs.firstOrNull { it.id == jobId }
+                ?: jobs.firstOrNull { SiteSessionCookies.allows(this, it.url) }
+                ?: return@observe
             val amount = SizeText.format(job.downloadedBytes)
             status.text = when (job.status) {
                 JobStatus.QUEUED -> "В очереди · yt-dlp + FFmpeg"
@@ -232,9 +234,15 @@ class SiteActivity : AppCompatActivity() {
     }
 
     private fun videoPage(): String? {
-        val url = browser.url?.takeIf { SiteSessionCookies.allows(this, it) }
-            ?: address.text.toString().trim().takeIf { SiteSessionCookies.allows(this, it) }
-        if (url == null) message("Открой страницу ролика на выбранном сайте")
+        val typed = address.text.toString().trim()
+            .takeIf { SiteSessionCookies.allows(this, it) }
+        val opened = browser.url?.takeIf { SiteSessionCookies.allows(this, it) }
+        val url = listOfNotNull(opened, typed)
+            .firstOrNull { OpenVideoStreams.isVideoPage(it) }
+        if (url == null) {
+            status.text = "Нужна ссылка именно на ролик, а не на главную страницу или поиск."
+            message("Открой конкретное видео, затем нажми «Скачать видео»")
+        }
         return url
     }
 
