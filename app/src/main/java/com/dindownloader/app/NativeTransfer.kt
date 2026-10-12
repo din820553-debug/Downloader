@@ -69,6 +69,9 @@ class NativeTransfer {
                 response = c.responseCode
             }
             if (response !in 200..299) NativeEngine.errorHttp(c)
+            if (c.contentType?.contains("text/html", ignoreCase = true) == true) {
+                throw IOException("Сайт прислал HTML вместо видео. Повтори через встроенный браузер")
+            }
             if (response == 206) {
                 val first = Regex("""bytes (\d+)-""").find(
                     c.getHeaderField("Content-Range").orEmpty()
@@ -149,6 +152,9 @@ class NativeTransfer {
             active = conn
             try {
                 if (conn.responseCode !in 200..299) NativeEngine.errorHttp(conn)
+                if (conn.contentType?.contains("text/html", ignoreCase = true) == true) {
+                    throw IOException("Сайт вернул страницу вместо видеофрагмента. Открой видео во встроенном браузере")
+                }
                 val segmentLength = conn.contentLengthLong.coerceAtLeast(0L)
                 var segmentDownloaded = 0L
                 var lastReport = 0L
