@@ -19,7 +19,8 @@ object TwitchResolver {
         if (host != "twitch.tv" && host != "clips.twitch.tv") return null
         val parts = parsed.pathSegments
         if (host == "clips.twitch.tv") {
-            val slug = parts.firstOrNull().orEmpty()
+            val slug = if (parts.firstOrNull() == "embed")
+                parsed.getQueryParameter("clip").orEmpty() else parts.firstOrNull().orEmpty()
             return if (slug.matches(Regex("[A-Za-z0-9_-]{5,140}"))) Target(clip = slug) else null
         }
         val clipIndex = parts.indexOf("clip")
