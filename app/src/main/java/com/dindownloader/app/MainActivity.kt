@@ -334,7 +334,8 @@ class MainActivity : AppCompatActivity() {
             })
             val status = when (job.status) {
                 JobStatus.QUEUED -> "В очереди"
-                JobStatus.RUNNING -> "Скачивание: ${job.progress}%"
+                JobStatus.RUNNING -> if (job.downloadedBytes == 0L && job.progress == 0)
+                    "Получаем видеопоток…" else "Скачивание: ${job.progress}%"
                 JobStatus.PAUSED -> "Приостановлено · ${job.progress}%"
                 JobStatus.COMPLETED -> "Готово · ${job.savedCount} файлов"
                 JobStatus.CANCELLED -> "Отменено"
