@@ -50,9 +50,9 @@ jobs:
       - name: Prepare test and release APKs
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Downloader-TEST-v2.0.1.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Downloader-TEST-v2.0.2.apk
           if [ "$SIGNING_AVAILABLE" = "true" ]; then
-            cp app/build/outputs/apk/release/app-release.apk dist/Downloader-Android-arm64-v2.0.1.apk
+            cp app/build/outputs/apk/release/app-release.apk dist/Downloader-Android-arm64-v2.0.2.apk
           fi
           ls -lh dist/*.apk
       - name: Verify APK integrity
@@ -65,21 +65,32 @@ jobs:
       - name: Upload APK build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Downloader-Android-v2.0.1
+          name: Downloader-Android-v2.0.2
           path: dist/*.apk
           retention-days: 30
+
+      - name: Publish direct TEST APK (separate app)
+        if: env.SIGNING_AVAILABLE != 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v2.0.2-test dist/Downloader-TEST-v2.0.2.apk \
+            --target "$GITHUB_SHA" \
+            --title "Downloader 2.0.2 TEST · separate installation" \
+            --prerelease \
+            --notes "This experimental APK installs as com.dindownloader.app.test alongside older Downloader versions. It does not overwrite or delete their data. Test APK signatures can change between GitHub Actions runs. Set stable release signing secrets for future reliable in-place upgrades."
 
       - name: Publish permanently signed direct APK
         if: env.SIGNING_AVAILABLE == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v2.0.1 >/dev/null 2>&1; then
-            gh release upload v2.0.1 dist/Downloader-Android-arm64-v2.0.1.apk --clobber
+          if gh release view v2.0.2 >/dev/null 2>&1; then
+            gh release upload v2.0.2 dist/Downloader-Android-arm64-v2.0.2.apk --clobber
           else
-            gh release create v2.0.1 dist/Downloader-Android-arm64-v2.0.1.apk \
+            gh release create v2.0.2 dist/Downloader-Android-arm64-v2.0.2.apk \
               --target "$GITHUB_SHA" \
-              --title "Downloader Android v2.0.1" \
+              --title "Downloader Android v2.0.2" \
               --notes "Native Kotlin engine bugfix: Twitch clip and VOD media resolution, HLS byte progress, authenticated stream probing, site folders, resume. Not all protected/region-restricted media is supported. Android 10+, ARM64."
           fi
       - name: Missing permanent signing secrets
