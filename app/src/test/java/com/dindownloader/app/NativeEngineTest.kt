@@ -109,6 +109,30 @@ class NativeEngineTest {
     }
 
     @Test
+    fun recognizesLegacyTwitchVodsFromScreenshot() {
+        val old = "https://www.twitch.tv/steel/v/28944715"
+        assertEquals("28944715", TwitchResolver.identify(old)?.vod)
+        assertEquals("28944715", TwitchResolver.identify(
+            "https://www.twitch.tv/steel/video/28944715")?.vod)
+        assertEquals("28944715", TwitchResolver.identify(
+            "https://player.twitch.tv/?video=v28944715")?.vod)
+        assertEquals("28944715", TwitchResolver.identify(
+            "https://www.twitch.tv/videos/28944715")?.vod)
+        assertTrue(TwitchResolver.isTwitchUrl("https://www.twitch.tv/steel"))
+        assertNull(TwitchResolver.identify("https://www.twitch.tv/steel"))
+        assertFalse(TwitchResolver.isTwitchUrl("https://fake.twitch.tv.evil.example/videos/28944715"))
+    }
+
+    @Test
+    fun scansEscapedUrlsInEmbeddedPlayerConfig() {
+        val html = """<script>var player={"file":"https:\\/\\/cdn.example.com\\/archive\\/full.m3u8",
+            "src":"https:\\u002F\\u002Fcdn.example.com\\u002Ffull.mp4"};</script>"""
+        val links = NativeEngine.extractCandidates("https://example.net/view/123", html)
+        assertTrue(links.toString(), links.contains("https://cdn.example.com/archive/full.m3u8"))
+        assertTrue(links.toString(), links.contains("https://cdn.example.com/full.mp4"))
+    }
+
+    @Test
     fun twitchClipChoosesQualityAndSignsUrl() {
         val data = JSONObject().put("clip", JSONObject()
             .put("title", "Test clip")
