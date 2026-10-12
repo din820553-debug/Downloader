@@ -24,7 +24,7 @@ data class MediaInfo(
 )
 
 data class SegmentInfo(val url: String, val init: Boolean = false)
-data class PlaylistInfo(val segments: List<SegmentInfo>, val format: String)
+data class PlaylistInfo(val segments: List<SegmentInfo>, val format: String, val durationSeconds: Double = 0.0)
 
 object NativeEngine {
     fun http(url: String, method: String = "GET", referer: String? = null,
@@ -337,6 +337,8 @@ object NativeEngine {
         if (lines.none { it.startsWith("#EXT-X-ENDLIST") }) {
             throw IOException("Прямые эфиры пока не поддерживаются; нужна запись VOD")
         }
+        val durationSeconds = lines.filter { it.startsWith("#EXTINF:") }
+            .sumOf { it.substringAfter(':').substringBefore(',').toDoubleOrNull() ?: 0.0 }
         val segments = mutableListOf<SegmentInfo>()
         var fmp4 = false
         for (line in lines) {
@@ -354,6 +356,6 @@ object NativeEngine {
         if (lines.any { it.startsWith("#EXT-X-BYTERANGE:") }) {
             throw IOException("HLS с byte-range сегментами пока не поддерживается")
         }
-        return PlaylistInfo(segments, if (fmp4) "mp4" else "ts")
+        return PlaylistInfo(segments, if (fmp4) "mp4" else "ts", durationSeconds)
     }
 }
