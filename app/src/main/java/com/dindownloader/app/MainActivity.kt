@@ -8,6 +8,8 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ImageView
@@ -22,10 +24,15 @@ import com.google.android.material.button.MaterialButton
 import androidx.appcompat.app.AlertDialog
 import coil.load
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 class MainActivity : AppCompatActivity() {
     private lateinit var ui: ActivityMainBinding
-    private val worker = Executors.newSingleThreadExecutor()
+    private val worker = Executors.newFixedThreadPool(3)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var previewFuture: Future<*>? = null
+    private var previewTimeout: Runnable? = null
+    private var previewGeneration = 0
     private var previewLink: String? = null
     private var previewTitle: String? = null
     private var previewThumbnail: String? = null
@@ -128,52 +135,80 @@ class MainActivity : AppCompatActivity() {
         return link
     }
 
+    private fun cancelPreviewTimeout() {
+        previewTimeout?.let(mainHandler::removeCallbacks)
+        previewTimeout = null
+    }
+
     private fun preview() {
         val link = url() ?: return
+        val quality = listOf(0, 1080, 720, 480, 360)
+            .getOrElse(ui.qualitySpinner.selectedItemPosition) { 0 }
+        val selectedMedia = if (previewLink == link) capturedMediaUrl else null
+        previewFuture?.cancel(true)
+        cancelPreviewTimeout()
+        val requestId = ++previewGeneration
+
         ui.infoCard.visibility = View.VISIBLE
         ui.infoTitle.text = "Проверяем ссылку…"
-        ui.infoDetails.text = "Подключаемся к источнику"
-        ui.infoTotalSize.text = "Общий размер файла: вычисляем…"
+        ui.infoDetails.text = "Ожидаем ответ сайта (не дольше 14 секунд)"
+        ui.infoTotalSize.text = "Общий размер файла: пока неизвестен"
         ui.infoButton.isEnabled = false
         ui.infoThumbnail.visibility = View.GONE
-        worker.execute {
+
+        val watchdog = Runnable {
+            if (!isDestroyed && requestId == previewGeneration) {
+                previewGeneration++
+                previewFuture?.cancel(true)
+                ui.infoTitle.text = "Сайт слишком долго отвечает"
+                ui.infoDetails.text = "Попробуй встроенный браузер или начни загрузку без проверки"
+                ui.infoTotalSize.text = "Общий размер файла: пока неизвестен"
+                ui.infoButton.isEnabled = true
+                previewTimeout = null
+            }
+        }
+        previewTimeout = watchdog
+        mainHandler.postDelayed(watchdog, 14_000L)
+
+        previewFuture = worker.submit {
             try {
-                val chosenQuality = listOf(0, 1080, 720, 480, 360)
-                    .getOrElse(ui.qualitySpinner.selectedItemPosition) { 0 }
-                val info = if (previewLink == link && !capturedMediaUrl.isNullOrBlank())
-                    NativeEngine.probe(capturedMediaUrl!!, chosenQuality, link)
-                else NativeEngine.probe(link, chosenQuality)
-                val title = info.title
-                val thumbnail = info.thumbnail
-                val size = info.estimatedBytes
+                val info = if (!selectedMedia.isNullOrBlank())
+                    NativeEngine.previewProbe(selectedMedia, quality, link)
+                else NativeEngine.previewProbe(link, quality)
                 runOnUiThread {
-                    if (!isDestroyed && url() == link) {
-                        previewLink = link
-                        previewTitle = title
-                        previewThumbnail = thumbnail
-                        previewSize = size
-                        ui.infoTitle.text = title
-                        ui.infoDetails.text = "Источник: ${Uri.parse(link).host}"
-                        ui.infoTotalSize.text = if (size > 0)
-                            "Общий размер файла: ~${SizeText.format(size)}"
-                            else "Общий размер файла: пока неизвестен"
-                        ui.infoThumbnail.visibility = if (thumbnail == null) View.GONE else View.VISIBLE
-                        if (thumbnail != null) ui.infoThumbnail.load(thumbnail) {
-                            crossfade(true)
-                            placeholder(R.drawable.ic_download)
-                            error(R.drawable.ic_download)
-                        }
+                    if (isDestroyed || requestId != previewGeneration) return@runOnUiThread
+                    cancelPreviewTimeout()
+                    if (ui.urlInput.text.toString().trim() != link) {
+                        ui.infoButton.isEnabled = true
+                        return@runOnUiThread
+                    }
+                    previewLink = link
+                    previewTitle = info.title
+                    previewThumbnail = info.thumbnail
+                    previewSize = info.estimatedBytes
+                    ui.infoTitle.text = info.title
+                    ui.infoDetails.text = "Источник: " + (Uri.parse(link).host ?: "неизвестен")
+                    ui.infoTotalSize.text = if (info.estimatedBytes > 0)
+                        "Общий размер файла: ~" + SizeText.format(info.estimatedBytes)
+                        else "Общий размер файла: пока неизвестен"
+                    ui.infoThumbnail.visibility =
+                        if (info.thumbnail == null) View.GONE else View.VISIBLE
+                    if (info.thumbnail != null) ui.infoThumbnail.load(info.thumbnail) {
+                        crossfade(true)
+                        placeholder(R.drawable.ic_download)
+                        error(R.drawable.ic_download)
                     }
                     ui.infoButton.isEnabled = true
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    if (!isDestroyed) {
-                        ui.infoTitle.text = "Не удалось получить информацию"
-                        ui.infoTotalSize.text = "Общий размер файла: пока неизвестен"
-                        ui.infoDetails.text = e.localizedMessage?.take(160) ?: "Неизвестная ошибка"
-                        ui.infoButton.isEnabled = true
-                    }
+                    if (isDestroyed || requestId != previewGeneration) return@runOnUiThread
+                    cancelPreviewTimeout()
+                    ui.infoTitle.text = "Не удалось проверить ссылку"
+                    ui.infoDetails.text = e.localizedMessage?.take(180)
+                        ?: "Сайт не предоставил информацию о видео"
+                    ui.infoTotalSize.text = "Общий размер файла: пока неизвестен"
+                    ui.infoButton.isEnabled = true
                 }
             }
         }
@@ -428,6 +463,9 @@ class MainActivity : AppCompatActivity() {
     private fun dp(n: Int) = (n * resources.displayMetrics.density + .5f).toInt()
 
     override fun onDestroy() {
+        previewGeneration++
+        cancelPreviewTimeout()
+        previewFuture?.cancel(true)
         worker.shutdownNow()
         super.onDestroy()
     }
