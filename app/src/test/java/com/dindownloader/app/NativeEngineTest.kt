@@ -120,6 +120,20 @@ class NativeEngineTest {
     }
 
     @Test
+    fun saveHubFallbackNeverSendsCookiesOrPrivateParameters() {
+        val url = SaveHubFallback.publicVideoUrl(
+            "https://www.pornhub.com/view_video.php?viewkey=public123&session=secret&token=private")
+        assertEquals("https://www.pornhub.com/view_video.php?viewkey=public123", url)
+        assertEquals("https://www.pornhub.com/view_video.php?viewkey=public123",
+            SaveHubFallback.publicVideoUrl("https://www.pornhub.com/embed/public123"))
+        assertNull(SaveHubFallback.publicVideoUrl("https://www.pornhub.com/"))
+        assertNull(SaveHubFallback.publicVideoUrl("https://evil.example/view_video.php?viewkey=public123"))
+        assertNull(SaveHubFallback.publicVideoUrl("https://pornhub.com.evil.example/view_video.php?viewkey=public123"))
+        assertNull(SaveHubFallback.publicVideoUrl("http://www.pornhub.com/view_video.php?viewkey=public123"))
+        assertNull(SaveHubFallback.publicVideoUrl("https://www.pornhub.com/view_video.php?viewkey=abc%0Dsecret"))
+    }
+
+    @Test
     fun recognizesVideoPagesAndSeparatesHomepage() {
         assertFalse(OpenVideoStreams.isVideoPage("https://example.org/"))
         assertFalse(OpenVideoStreams.isVideoPage("https://example.org/search?q=videos"))
