@@ -1,6 +1,9 @@
 package com.dindownloader.app
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -94,6 +97,9 @@ class SiteActivity : AppCompatActivity() {
         actions.addView(button("Найти поток", "#294463") { scanMedia() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         root.addView(actions)
+        root.addView(button("Скачать через SaveHub (резервный способ)", "#35517B") {
+            openSaveHub()
+        }, LinearLayout.LayoutParams(-1, dp(46)))
         val updateButton = button("Обновить движок загрузки", "#223654") {
             AlertDialog.Builder(this)
                 .setTitle("Обновление экстрактора")
@@ -258,6 +264,40 @@ class SiteActivity : AppCompatActivity() {
     private fun startDownloads() {
         ContextCompat.startForegroundService(this,
             Intent(this, DownloadService::class.java).setAction(DownloadService.ACTION_START))
+    }
+
+    private fun openSaveHub() {
+        val page = videoPage() ?: return
+        val publicUrl = SaveHubFallback.publicVideoUrl(page)
+        if (publicUrl == null) {
+            status.text = "Резервный сервис принимает только публичные ссылки на ролики."
+            message("Для этого адреса внешний способ недоступен.")
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Скачать через SaveHub")
+            .setMessage(
+                "Это сторонний сайт, а не наш движок. После подтверждения " +
+                "ссылка на публичный ролик будет скопирована и откроется браузер. " +
+                "Вставь ссылку на SaveHub и выбери качество. " +
+                "Данные входа, cookies и токены в ссылку не включаются. " +
+                "Загруженный файл будет в обычной папке «Загрузки» браузера."
+            )
+            .setNegativeButton("Отмена", null)
+            .setPositiveButton("Открыть SaveHub") { _, _ ->
+                val clipboard = getSystemService(ClipboardManager::class.java)
+                clipboard.setPrimaryClip(ClipData.newPlainText("Ссылка на ролик", publicUrl))
+                val browserIntent = Intent(Intent.ACTION_VIEW,
+                    Uri.parse(SaveHubFallback.WEBSITE))
+                    .addCategory(Intent.CATEGORY_BROWSABLE)
+                try {
+                    startActivity(browserIntent)
+                    status.text = "Ссылка скопирована. Вставь её на сайте и выбери качество."
+                } catch (_: ActivityNotFoundException) {
+                    status.text = "На устройстве нет браузера для открытия ссылки."
+                    message("Ссылка скопирована, но системный браузер не найден.")
+                }
+            }.show()
     }
 
     private fun updateButtonStart() {
