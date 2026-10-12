@@ -96,13 +96,17 @@ object NativeEngine {
 
     private fun readHead(url: String, referer: String?): Pair<String, Long> {
         // Some video CDNs reject HEAD but accept GET with a byte-range request.
-        val head = http(url, "HEAD", referer)
         try {
-            if (head.responseCode in 200..299) {
-                val mime = (head.contentType ?: "").lowercase(Locale.ROOT)
-                if (mime.isNotBlank()) return mime to head.contentLengthLong.coerceAtLeast(0L)
-            }
-        } finally { head.disconnect() }
+            val head = http(url, "HEAD", referer)
+            try {
+                if (head.responseCode in 200..299) {
+                    val mime = (head.contentType ?: "").lowercase(Locale.ROOT)
+                    if (mime.isNotBlank()) return mime to head.contentLengthLong.coerceAtLeast(0L)
+                }
+            } finally { head.disconnect() }
+        } catch (_: IOException) {
+            // Not every media CDN implements HEAD; GET is authoritative.
+        }
         val get = http(url, "GET", referer, "bytes=0-0")
         try {
             if (get.responseCode !in 200..299) errorHttp(get)
