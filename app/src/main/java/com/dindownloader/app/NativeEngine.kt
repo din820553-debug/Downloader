@@ -159,7 +159,7 @@ object NativeEngine {
         val expectedDuration = findMeta(page, "video:duration")
             ?.toDoubleOrNull()?.toLong()
             ?: findMeta(page, "og:video:duration")?.toDoubleOrNull()?.toLong()
-            ?: Regex(""""duration"\\s*:\\s*(\\d{1,7})""").find(page)
+            ?: Regex(""""duration"\s*:\s*(\d{1,7})""").find(page)
                 ?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
         val candidates = extractCandidates(url, page, quality)
         if (candidates.isEmpty()) {
