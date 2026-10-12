@@ -33,6 +33,19 @@ object OpenVideoStreams {
             path.contains("/video/get_media")
     }
 
+    /** Browsing a homepage cannot be mistaken for opening a video page. */
+    fun isVideoPage(raw: String): Boolean {
+        val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return false
+        if (uri.scheme != "https" || uri.host.isNullOrBlank()) return false
+        val path = uri.path.orEmpty().lowercase()
+        return isMediaRequest(raw) ||
+            (path.contains("view_video") && !uri.getQueryParameter("viewkey").isNullOrBlank()) ||
+            (path.contains("/video/show") && !uri.getQueryParameter("viewkey").isNullOrBlank()) ||
+            path.startsWith("/embed/") && path.length > 7 ||
+            path.startsWith("/watch/") && path.length > 7 ||
+            path.startsWith("/videos/") && path.length > 8
+    }
+
     fun isQualityEndpoint(raw: String): Boolean =
         Uri.parse(raw).path.orEmpty().contains("/video/get_media")
 
