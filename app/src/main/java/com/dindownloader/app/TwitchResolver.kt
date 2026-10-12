@@ -7,8 +7,8 @@ import java.net.URLEncoder
 
 /** Native Twitch clip and VOD URL resolver. Web GraphQL is undocumented and may change. */
 object TwitchResolver {
-    private const val CLIENT = "kimne78kx3ncx6brgo4mv6wki5h1ko"
-    private const val CLIP_HASH = "993d9a5131f15a37bd16f32342c44ed1e0b1a9b968c6afdb662d2cddd595f6c5"
+    private const val CLIENT = "ue6666qo983tsx6so1t0vnawi233wa"
+    private const val CLIP_HASH = "2db6a3b20eabf510bd3cf465ae2408834b59eb6b8af89ca73ab1486cacecfb63"
     private const val CLIP_HASH_BACKUP = "36b89d2507fce29e5ca551df756d27c1cfe079e2609642b4390aa4c35796eb11"
 
     data class Target(val clip: String? = null, val vod: String? = null)
@@ -61,22 +61,39 @@ object TwitchResolver {
     }
 
     internal fun clipRequest(slug: String, hash: String = CLIP_HASH) = JSONObject()
-        .put("operationName", "VideoAccessToken_Clip")
-        .put("variables", JSONObject().put("slug", slug).put("platform", "web"))
+        .put("operationName", "ShareClipRenderStatus")
+        .put("variables", JSONObject().put("slug", slug))
         .put("extensions", JSONObject().put("persistedQuery",
             JSONObject().put("version", 1).put("sha256Hash", hash)))
 
     internal fun clipFromData(original: String, data: JSONObject, quality: Int): MediaInfo {
         val clip = data.optJSONObject("clip") ?: throw IOException("Клип Twitch недоступен")
-        val formats = clip.optJSONArray("videoQualities")
-            ?: throw IOException("Twitch не предоставил MP4")
+        // Current Twitch GraphQL stores video qualities in clip.assets[0], not at clip root.
+        val assets = clip.optJSONArray("assets")
         val links = mutableListOf<Pair<Int, String>>()
-        for (index in 0 until formats.length()) {
-            val item = formats.optJSONObject(index) ?: continue
-            val url = item.optString("sourceURL")
-            if (!url.startsWith("https://") && !url.startsWith("http://")) continue
-            val height = item.optString("quality").filter(Char::isDigit).toIntOrNull() ?: 0
-            links.add(height to url)
+        if (assets != null) {
+            for (assetIndex in 0 until assets.length()) {
+                val formats = assets.optJSONObject(assetIndex)?.optJSONArray("videoQualities") ?: continue
+                for (index in 0 until formats.length()) {
+                    val item = formats.optJSONObject(index) ?: continue
+                    val url = item.optString("sourceURL")
+                    if (!url.startsWith("https://") && !url.startsWith("http://")) continue
+                    val height = item.optString("quality").filter(Char::isDigit).toIntOrNull() ?: 0
+                    links.add(height to url)
+                }
+            }
+        }
+        if (links.isEmpty()) {
+            val formats = clip.optJSONArray("videoQualities")
+            if (formats != null) {
+                for (index in 0 until formats.length()) {
+                    val item = formats.optJSONObject(index) ?: continue
+                    val url = item.optString("sourceURL")
+                    if (url.startsWith("https://") || url.startsWith("http://")) {
+                        links.add((item.optString("quality").filter(Char::isDigit).toIntOrNull() ?: 0) to url)
+                    }
+                }
+            }
         }
         val chosen = links.filter { quality == 0 || it.first <= quality }.ifEmpty { links }
             .maxByOrNull { it.first } ?: throw IOException("Нет доступного MP4 клипа")
@@ -106,21 +123,16 @@ object TwitchResolver {
     }
 
     internal fun vodRequest(id: String): JSONObject {
-        val query = """
-            query PlaybackAccessToken_Template(_D_login: String!, _D_isLive: Boolean!,
-                _D_vodID: ID!, _D_isVod: Boolean!, _D_playerType: String!) {
-                streamPlaybackAccessToken(channelName: _D_login,
-                    params: {platform: "web", playerBackend: "mediaplayer", playerType: _D_playerType})
-                    @include(if: _D_isLive) { value signature }
-                videoPlaybackAccessToken(id: _D_vodID,
-                    params: {platform: "web", playerBackend: "mediaplayer", playerType: _D_playerType})
-                    @include(if: _D_isVod) { value signature }
-            }
-        """.trimIndent().replace("_D_", "$")
-        return JSONObject().put("operationName", "PlaybackAccessToken_Template")
-            .put("query", query)
-            .put("variables", JSONObject().put("login", "").put("isLive", false)
-                .put("vodID", id).put("isVod", true).put("playerType", "embed"))
+        val query = """{
+          videoPlaybackAccessToken(
+            id: "$id",
+            params: {platform: "web", playerBackend: "mediaplayer", playerType: "site"}
+          ) {
+            value
+            signature
+          }
+        }""".trimIndent()
+        return JSONObject().put("query", query)
     }
 
     internal fun vodFromData(original: String, id: String, data: JSONObject): MediaInfo {
@@ -131,7 +143,7 @@ object TwitchResolver {
         if (sig.isBlank() || token.isBlank()) throw IOException("Нет токена просмотра Twitch")
         val hls = "https://usher.ttvnw.net/vod/" + id + ".m3u8" +
             "?allow_source=true&allow_audio_only=true&player=twitchweb" +
-            "&playlist_include_framerate=true" +
+            "&playlist_include_framerate=true&p=7452391&platform=web" +
             "&sig=" + encode(sig) + "&token=" + encode(token)
         return MediaInfo(original, hls, "Twitch VOD " + id, kind = "hls",
             referer = "https://www.twitch.tv/", mime = "application/x-mpegURL")
