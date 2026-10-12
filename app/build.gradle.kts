@@ -13,8 +13,8 @@ android {
         applicationId = "com.dindownloader.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 7
-        versionName = "2.0.1"
+        versionCode = 8
+        versionName = "2.0.2"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -34,8 +34,18 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Test builds must never collide with an installed production app.
+            applicationIdSuffix = ".test"
+            versionNameSuffix = "-test"
+            manifestPlaceholders["appLabel"] = "Downloader TEST"
+            if (signingFile != null) {
+                signingConfig = signingConfigs.getByName("stableRelease")
+            }
+        }
         release {
             isMinifyEnabled = false
+            manifestPlaceholders["appLabel"] = "Downloader"
             if (signingFile != null) {
                 signingConfig = signingConfigs.getByName("stableRelease")
             }
