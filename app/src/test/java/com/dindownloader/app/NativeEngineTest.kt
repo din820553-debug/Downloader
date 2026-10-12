@@ -120,7 +120,7 @@ class NativeEngineTest {
     @Test
     fun twitchVodProducesAuthenticatedHls() {
         val request = TwitchResolver.vodRequest("1122334455")
-        assertTrue(request.getString("query").contains("$" + "vodID"))
+        assertTrue(request.getString("query").contains("videoPlaybackAccessToken"))
         val data = JSONObject().put("videoPlaybackAccessToken", JSONObject()
             .put("signature", "sigABC").put("value", "{\"chansub\":true}"))
         val media = TwitchResolver.vodFromData(
@@ -160,6 +160,54 @@ class NativeEngineTest {
         val info = NativeEngine.playlist(
             MediaInfo("$host/mixed.m3u8", "$host/mixed.m3u8", "video", kind="hls"), 720)
         assertEquals(1, info.segments.size)
+    }
+
+    @Test
+    fun parsesYouTubeUrlsAndPlayerResponse() {
+        val id = "dQw4w9WgXcQ"
+        assertEquals(id, YouTubeResolver.videoId("https://youtu.be/" + id))
+        assertEquals(id, YouTubeResolver.videoId("https://www.youtube.com/watch?v=" + id))
+        assertEquals(id, YouTubeResolver.videoId("https://youtube.com/shorts/" + id))
+        assertNull(YouTubeResolver.videoId("https://fakeyoutube.com/watch?v=" + id))
+        val fake = """<script>var ytInitialPlayerResponse = {
+            "videoDetails":{"title":"Example {video}", "lengthSeconds":"238"},
+            "streamingData":{"formats":[
+              {"url":"https://cdn.example/low.mp4", "height":360,
+               "mimeType":"video/mp4; codecs=\"avc1.4d401e,mp4a.40.2\"", "contentLength":"10000"},
+              {"url":"https://cdn.example/high.mp4", "height":720,
+               "mimeType":"video/mp4; codecs=\"avc1.4d401f,mp4a.40.2\"", "contentLength":"30000"}]}
+            };</script>"""
+        val response = YouTubeResolver.jsonObjectFollowing(fake, "ytInitialPlayerResponse")
+        assertNotNull(response)
+        val selected = YouTubeResolver.select(response!!, "https://youtu.be/" + id, 480)
+        assertEquals("https://cdn.example/low.mp4", selected.mediaUrl)
+        assertEquals(238L, selected.expectedDurationSeconds)
+        assertEquals(10000L, selected.estimatedBytes)
+    }
+
+    @Test
+    fun refusesToLabelHtmlAndJsonAsFinishedVideos() {
+        assertFalse(MediaValidation.recognizable("<html><body>login</body></html>".toByteArray(), "video/mp4"))
+        assertFalse(MediaValidation.recognizable("{\"status\":\"unauthorized\"}".toByteArray(), "video/mp4"))
+        val mp4 = ByteArray(32)
+        "ftyp".toByteArray().copyInto(mp4, 4)
+        assertTrue(MediaValidation.recognizable(mp4, "video/mp4"))
+        assertFalse(MediaValidation.recognizable(ByteArray(100) { 42 }, "video/mp4"))
+    }
+
+    @Test
+    fun parsesUpdatedTwitchClipAssets() {
+        val clip = JSONObject().put("clip", JSONObject()
+            .put("title", "An actual clip")
+            .put("playbackAccessToken", JSONObject().put("signature","ABC").put("value","abc"))
+            .put("assets", org.json.JSONArray().put(JSONObject()
+                .put("videoQualities", org.json.JSONArray()
+                    .put(JSONObject().put("quality","720").put("sourceURL","https://cdn.test/720.mp4"))
+                    .put(JSONObject().put("quality","480").put("sourceURL","https://cdn.test/480.mp4"))))))
+        val selected = TwitchResolver.clipFromData("https://clips.twitch.tv/ExampleClip",clip,480)
+        assertTrue(selected.mediaUrl.contains("/480.mp4"))
+        assertEquals("An actual clip",selected.title)
+        assertEquals("ShareClipRenderStatus",TwitchResolver.clipRequest("ExampleClip").getString("operationName"))
     }
 
     @Test
