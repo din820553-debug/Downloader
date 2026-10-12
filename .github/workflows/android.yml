@@ -50,9 +50,9 @@ jobs:
       - name: Prepare test and release APKs
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Downloader-TEST-v2.0.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Downloader-TEST-v2.0.1.apk
           if [ "$SIGNING_AVAILABLE" = "true" ]; then
-            cp app/build/outputs/apk/release/app-release.apk dist/Downloader-Android-arm64-v2.0.0.apk
+            cp app/build/outputs/apk/release/app-release.apk dist/Downloader-Android-arm64-v2.0.1.apk
           fi
           ls -lh dist/*.apk
       - name: Verify APK integrity
@@ -65,7 +65,7 @@ jobs:
       - name: Upload APK build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Downloader-Android-v2.0.0
+          name: Downloader-Android-v2.0.1
           path: dist/*.apk
           retention-days: 30
 
@@ -74,13 +74,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v2.0.0 >/dev/null 2>&1; then
-            gh release upload v2.0.0 dist/Downloader-Android-arm64-v2.0.0.apk --clobber
+          if gh release view v2.0.1 >/dev/null 2>&1; then
+            gh release upload v2.0.1 dist/Downloader-Android-arm64-v2.0.1.apk --clobber
           else
-            gh release create v2.0.0 dist/Downloader-Android-arm64-v2.0.0.apk \
+            gh release create v2.0.1 dist/Downloader-Android-arm64-v2.0.1.apk \
               --target "$GITHUB_SHA" \
-              --title "Downloader Android v2.0.0" \
-              --notes "Native Kotlin engine without yt-dlp or FFmpeg. Direct HTTP files and unencrypted HLS VOD, per-site folders, pause/resume, progress and video previews. Initial engine release; some sites need future extractors. Android 10+, ARM64."
+              --title "Downloader Android v2.0.1" \
+              --notes "Native Kotlin engine bugfix: Twitch clip and VOD media resolution, HLS byte progress, authenticated stream probing, site folders, resume. Not all protected/region-restricted media is supported. Android 10+, ARM64."
           fi
       - name: Missing permanent signing secrets
         if: env.SIGNING_AVAILABLE != 'true'
