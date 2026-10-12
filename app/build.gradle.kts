@@ -13,8 +13,8 @@ android {
         applicationId = "com.dindownloader.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 11
-        versionName = "2.0.5"
+        versionCode = 12
+        versionName = "2.1.0"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -36,9 +36,9 @@ android {
     buildTypes {
         debug {
             // Test builds must never collide with an installed production app.
-            applicationIdSuffix = ".preview"
+            applicationIdSuffix = ".hybrid"
             versionNameSuffix = "-test"
-            manifestPlaceholders["appLabel"] = "Downloader PREVIEW"
+            manifestPlaceholders["appLabel"] = "Downloader HYBRID"
             if (signingFile != null) {
                 signingConfig = signingConfigs.getByName("stableRelease")
             }
@@ -77,6 +77,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.7")
     implementation("com.google.android.material:material:1.12.0")
     implementation("io.coil-kt:coil:2.7.0")
+    // Optional legacy engine selected explicitly by the user in the UI.
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("org.robolectric:robolectric:4.14.1")
