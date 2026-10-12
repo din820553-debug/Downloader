@@ -14,6 +14,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [29])
@@ -29,6 +30,12 @@ class NativeEngineTest {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val path = request.path?.substringBefore('?') ?: "/"
+                if (path == "/never.mp4") {
+                    return MockResponse().setResponseCode(200)
+                        .addHeader("Content-Type", "video/mp4")
+                        .setHeadersDelay(3, TimeUnit.SECONDS)
+                        .setBody("late response")
+                }
                 if (path == "/video.mp4" && rangedBody != null) {
                     val full = rangedBody!!
                     val wanted = request.getHeader("Range")
@@ -225,6 +232,19 @@ class NativeEngineTest {
             assertTrue(thrown is java.io.IOException)
             assertTrue(thrown!!.message.orEmpty().contains("предпросмотр"))
         } finally { temp.deleteRecursively() }
+    }
+
+    @Test
+    fun metadataProbeStopsWhenServerDoesNotRespond() {
+        val url = "$host/never.mp4"
+        val began = System.nanoTime()
+        val error = runCatching {
+            NativeEngine.boundedProbe(url, 0, null, 650)
+        }.exceptionOrNull()
+        val elapsed = (System.nanoTime() - began) / 1_000_000
+        assertNotNull("A stalled metadata server must not be treated as success", error)
+        assertTrue("Probe should stop near the deadline, took " + elapsed + " ms",
+            elapsed < 3000)
     }
 
     @Test
