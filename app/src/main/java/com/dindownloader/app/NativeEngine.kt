@@ -319,6 +319,10 @@ object NativeEngine {
         for (tag in listOf("og:video:secure_url","og:video:url","og:video","twitter:player:stream")) {
             findMeta(html, tag)?.let(::add)
         }
+        // JSON often escapes '/' as '\\/' or '\\u002F'; normalize before scanning.
+        val scanText = html.replace("\\/", "/")
+            .replace("\\u002f", "/", ignoreCase = true)
+            .replace("\\u0026", "&", ignoreCase = true)
         val patterns = listOf(
             Regex("""<(?:source|video)\b[^>]*\bsrc\s*=\s*["']([^"']+)""", RegexOption.IGNORE_CASE),
             Regex("""["'](?:videoUrl|video_url|videoSrc|hlsUrl|hls_url|streamUrl|contentUrl|file|src)["']\s*:\s*["']([^"']+)""", RegexOption.IGNORE_CASE),
@@ -326,7 +330,7 @@ object NativeEngine {
             Regex("""(?:https?:)?\\?/\\?/[^"' ]+\.(?:m3u8|mp4|webm|m4a)(?:\?[^"' <]*)?""", RegexOption.IGNORE_CASE)
         )
         for (pattern in patterns) {
-            for (match in pattern.findAll(html).take(50)) {
+            for (match in pattern.findAll(scanText).take(50)) {
                 val candidate = if (match.groupValues.size > 1) match.groupValues[1] else match.value
                 add(candidate)
             }
