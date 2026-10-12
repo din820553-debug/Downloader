@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "Downloader"
-include(":app")
+include(":app", ":siteapp")
