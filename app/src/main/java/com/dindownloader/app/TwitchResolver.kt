@@ -15,25 +15,48 @@ object TwitchResolver {
 
     data class Target(val clip: String? = null, val vod: String? = null)
 
-    fun identify(url: String): Target? {
+    fun isTwitchUrl(url: String): Boolean {
         val parsed = Uri.parse(url)
-        val host = parsed.host?.lowercase()?.removePrefix("www.")?.removePrefix("m.") ?: return null
-        if (host != "twitch.tv" && host != "clips.twitch.tv") return null
-        val parts = parsed.pathSegments
+        val host = parsed.host?.lowercase()
+            ?.removePrefix("www.")?.removePrefix("m.")?.removePrefix("go.")
+            ?: return false
+        return parsed.scheme in listOf("http", "https") &&
+            host in setOf("twitch.tv", "clips.twitch.tv", "player.twitch.tv")
+    }
+
+    fun identify(url: String): Target? {
+        if (!isTwitchUrl(url)) return null
+        val parsed = Uri.parse(url)
+        val host = parsed.host!!.lowercase()
+            .removePrefix("www.").removePrefix("m.").removePrefix("go.")
+        val parts = parsed.pathSegments.filter(String::isNotBlank)
+
+        if (host == "player.twitch.tv") {
+            val vod = parsed.getQueryParameter("video")
+                ?.removePrefix("v")
+                ?.takeIf { it.matches(Regex("[0-9]{5,20}")) }
+            return vod?.let { Target(vod = it) }
+        }
         if (host == "clips.twitch.tv") {
             val slug = if (parts.firstOrNull() == "embed")
-                parsed.getQueryParameter("clip").orEmpty() else parts.firstOrNull().orEmpty()
-            return if (slug.matches(Regex("[A-Za-z0-9_-]{5,140}"))) Target(clip = slug) else null
+                parsed.getQueryParameter("clip").orEmpty()
+            else parts.lastOrNull().orEmpty()
+            return slug.takeIf { it.matches(Regex("[A-Za-z0-9_-]{5,140}")) }
+                ?.let { Target(clip = it) }
         }
+
         val clipIndex = parts.indexOf("clip")
-        if (clipIndex >= 0 && clipIndex + 1 < parts.size) {
-            val slug = parts[clipIndex + 1]
-            if (slug.matches(Regex("[A-Za-z0-9_-]{5,140}"))) return Target(clip = slug)
+        if (clipIndex >= 0) {
+            val slug = parts.getOrNull(clipIndex + 1)
+            if (slug != null && slug.matches(Regex("[A-Za-z0-9_-]{5,140}")))
+                return Target(clip = slug)
         }
-        val vodIndex = parts.indexOf("videos")
-        if (vodIndex >= 0 && vodIndex + 1 < parts.size) {
-            val id = parts[vodIndex + 1]
-            if (id.matches(Regex("[0-9]{5,20}"))) return Target(vod = id)
+        // Both current and legacy Twitch VOD links.
+        // /videos/123, /channel/v/123, /channel/video/123, /channel/videos/123
+        val vodIndex = parts.indexOfFirst { it in setOf("videos", "video", "v") }
+        if (vodIndex >= 0) {
+            val id = parts.getOrNull(vodIndex + 1)
+            if (id != null && id.matches(Regex("[0-9]{5,20}"))) return Target(vod = id)
         }
         return null
     }
