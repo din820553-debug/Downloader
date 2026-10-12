@@ -53,7 +53,9 @@ class DownloadService : Service() {
                 if (currentJob == id) {
                     interrupted = id
                     if (action == ACTION_REMOVE) removing = id
-                    active?.interrupt()
+                    if (DownloadStore.get(id)?.engine == "legacy") {
+                        LegacyYtDlpEngine.interrupt(id)
+                    } else active?.interrupt()
                 } else {
                     if (action == ACTION_REMOVE) {
                         workspace(id).deleteRecursively()
@@ -113,7 +115,7 @@ class DownloadService : Service() {
         }
         interrupted = null
         removing = null
-        active = NativeTransfer()
+        active = if (job.engine == "legacy") null else NativeTransfer()
         val directory = workspace(job.id).apply { mkdirs() }
         var savedUri: Uri? = null
         var complete = false
@@ -121,6 +123,11 @@ class DownloadService : Service() {
         DownloadStore.update(job.id) { it.copy(status = JobStatus.RUNNING, error = null) }
         try {
             ensureActive(job.id)
+            if (job.engine == "legacy") {
+                downloadLegacy(job, directory)
+                complete = true
+                return
+            }
             notifyProgress("Проверяем видео…", 0, true)
             val info = if (!job.directMediaUrl.isNullOrBlank()) {
                 NativeEngine.resolveForDownload(job.directMediaUrl, job.quality, job.url)
@@ -185,6 +192,56 @@ class DownloadService : Service() {
         }
     }
 
+    /**
+     * Original yt-dlp/FFmpeg downloader. Each task records its engine, so retries and
+     * resumed tasks cannot silently switch between incompatible transfer formats.
+     */
+    private fun downloadLegacy(job: DownloadJob, directory: File) {
+        notifyProgress("Подготавливаем yt-dlp и FFmpeg…", 0, true)
+        ensureActive(job.id)
+        var lastTick = 0L
+        val media = LegacyYtDlpEngine.transfer(applicationContext, job, directory) {
+            downloaded, total, percent, eta ->
+            ensureActive(job.id)
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastTick > 500 || percent >= 100) {
+                lastTick = now
+                DownloadStore.update(job.id) {
+                    it.copy(downloadedBytes = downloaded,
+                        totalBytes = if (total > 0) total else it.totalBytes,
+                        progress = percent, etaSeconds = eta)
+                }
+                notifyProgress("yt-dlp: " + SizeText.format(downloaded), percent, total <= 0L)
+            }
+        }
+        ensureActive(job.id)
+        notifyProgress("Проверяем и сохраняем файлы…", 100, true)
+        val saved = mutableListOf<Uri>()
+        try {
+            for ((index, result) in media.withIndex()) {
+                ensureActive(job.id)
+                val fileInfo = MediaInfo(
+                    originalUrl = job.url, mediaUrl = job.url,
+                    title = job.title, mime = result.mime)
+                MediaValidation.check(fileInfo, result.file, result.mime)
+                saved.add(store(job.url, result.file.nameWithoutExtension, result))
+            }
+            ensureActive(job.id)
+            val total = media.sumOf { it.file.length() }
+            DownloadStore.update(job.id) {
+                it.copy(status = JobStatus.COMPLETED, progress = 100,
+                    savedCount = saved.size, downloadedBytes = total, totalBytes = total,
+                    resultUri = saved.firstOrNull()?.toString(),
+                    savedUris = saved.map(Uri::toString), error = null)
+            }
+        } catch (e: Exception) {
+            saved.forEach { uri ->
+                try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+            }
+            throw e
+        }
+    }
+
     private fun store(originalUrl: String, title: String, result: TransferResult): Uri {
         val ext = when (result.mime) {
             "video/mp2t" -> "ts"
@@ -194,6 +251,8 @@ class DownloadService : Service() {
             "audio/mpeg" -> "mp3"
             "audio/mp4" -> "m4a"
             "audio/aac" -> "aac"
+            "audio/opus" -> "opus"
+            "audio/ogg" -> "ogg"
             else -> "mp4"
         }
         val baseName = title.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), "_")
@@ -238,6 +297,8 @@ class DownloadService : Service() {
     }
 
     override fun onDestroy() {
+        currentJob?.takeIf { DownloadStore.get(it)?.engine == "legacy" }
+            ?.let(LegacyYtDlpEngine::interrupt)
         active?.interrupt()
         executor.shutdownNow()
         super.onDestroy()
