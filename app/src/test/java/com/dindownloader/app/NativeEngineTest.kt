@@ -150,6 +150,19 @@ class NativeEngineTest {
     }
 
     @Test
+    fun hlsMasterWithOptionalAudioDoesNotFailVideoVariant() {
+        endpoint("/mixed.m3u8", "application/vnd.apple.mpegurl",
+            "#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"commentary\",URI=\"audio.m3u8\"\n" +
+            "#EXT-X-STREAM-INF:BANDWIDTH=1600000,RESOLUTION=1280x720\nmain.m3u8\n")
+        endpoint("/main.m3u8", "application/vnd.apple.mpegurl",
+            "#EXTM3U\n#EXTINF:4,\nvideo.ts\n#EXT-X-ENDLIST\n")
+        endpoint("/video.ts", "video/mp2t", "DATA")
+        val info = NativeEngine.playlist(
+            MediaInfo("$host/mixed.m3u8", "$host/mixed.m3u8", "video", kind="hls"), 720)
+        assertEquals(1, info.segments.size)
+    }
+
+    @Test
     fun resumesTransferByHttpRange() {
         val bytes = "ABCDEFGHIJKL".toByteArray()
         rangedBody = bytes
