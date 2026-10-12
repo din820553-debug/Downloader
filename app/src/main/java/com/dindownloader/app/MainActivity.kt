@@ -489,6 +489,46 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener { removeJob(job) }
             })
             box.addView(actions)
+            if (job.status == JobStatus.FAILED) {
+                val alternate = if (job.engine == "legacy") "native" else "legacy"
+                box.addView(MaterialButton(this).apply {
+                    text = if (alternate == "legacy")
+                        "Попробовать через yt-dlp + FFmpeg"
+                    else "Попробовать через Kotlin"
+                    isAllCaps = false
+                    setTextColor(Color.WHITE)
+                    backgroundTintList = android.content.res.ColorStateList.valueOf(
+                        Color.parseColor("#2E4863"))
+                    cornerRadius = dp(12)
+                    layoutParams = LinearLayout.LayoutParams(-1, dp(46)).apply {
+                        topMargin = dp(8)
+                    }
+                    setOnClickListener {
+                        DownloadStore.add(job.url, job.title, job.format, job.quality,
+                            job.playlist, job.thumbnailUrl, 0L,
+                            if (alternate == "native") job.directMediaUrl else null,
+                            alternate)
+                        startQueue()
+                        Toast.makeText(this@MainActivity,
+                            "Повторяем через " + (if (alternate == "legacy") "yt-dlp" else "Kotlin"),
+                            Toast.LENGTH_SHORT).show()
+                    }
+                })
+                if (!job.error.isNullOrBlank()) {
+                    box.addView(TextView(this).apply {
+                        text = "Копировать текст ошибки"
+                        setTextColor(Color.parseColor("#B6CCFF"))
+                        textSize = 12f
+                        setPadding(dp(8), dp(10), dp(8), dp(4))
+                        setOnClickListener {
+                            val clipboard = getSystemService(ClipboardManager::class.java)
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText(
+                                "Ошибка Downloader", job.error))
+                            Toast.makeText(this@MainActivity, "Ошибка скопирована", Toast.LENGTH_SHORT).show()
+                        }
+                    })
+                }
+            }
             ui.historyContainer.addView(box)
         }
     }
