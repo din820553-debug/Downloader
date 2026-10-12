@@ -124,7 +124,7 @@ class BrowserActivity : AppCompatActivity() {
                   doc.querySelectorAll('video,source').forEach(function(el) {
                     [el.currentSrc,el.src,el.getAttribute('src')].forEach(function(v) {
                       if (v && !v.startsWith('blob:')) {
-                        try { urls.push(new URL(v,doc.baseURI).href); } catch (_) {}
+                        try { urls.push({url:new URL(v,doc.baseURI).href,media:true}); } catch (_) {}
                       }
                     });
                   });
@@ -136,7 +136,7 @@ class BrowserActivity : AppCompatActivity() {
               collect(document);
               try {
                 performance.getEntriesByType('resource').forEach(function(e) {
-                  if (e.name) urls.push(e.name);
+                  if (e.name) urls.push({url:e.name,media:false});
                 });
               } catch (_) {}
               return JSON.stringify(urls.slice(-200));
@@ -146,7 +146,9 @@ class BrowserActivity : AppCompatActivity() {
                 val decoded = JSONTokener(raw).nextValue() as? String ?: return@evaluateJavascript
                 val links = JSONArray(decoded)
                 for (i in 0 until links.length()) {
-                    links.optString(i).takeIf(String::isNotBlank)?.let(::maybeRecord)
+                    val item = links.optJSONObject(i)
+                    val link = item?.optString("url") ?: links.optString(i)
+                    if (link.isNotBlank()) maybeRecord(link, item?.optBoolean("media") == true)
                 }
             } catch (_: Exception) {}
         }
