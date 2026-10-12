@@ -130,6 +130,13 @@ class NativeTransfer {
         progress: (Long, Long, Int) -> Unit
     ): TransferResult {
         val playlist = NativeEngine.playlist(media, quality)
+        val expected = media.expectedDurationSeconds
+        if (expected > 10L && playlist.durationSeconds > 0.0 &&
+            playlist.durationSeconds < expected * 0.70) {
+            throw IOException("Сайт предоставил только " +
+                playlist.durationSeconds.toInt() + " сек. вместо ожидаемых " +
+                expected + " сек. Нельзя сохранить предпросмотр как полный ролик.")
+        }
         val chunks = File(folder, "chunks")
         val signature = playlist.segments.joinToString("\n") { it.url }.hashCode().toString()
         val manifestState = File(folder, "playlist.fingerprint")
