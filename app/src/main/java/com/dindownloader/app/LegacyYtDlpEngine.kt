@@ -28,7 +28,13 @@ object LegacyYtDlpEngine {
         val request = YoutubeDLRequest(url)
         request.addOption("--no-playlist")
         request.addOption("-f", formatSelector(quality))
-        val metadata = YoutubeDL.getInstance().getInfo(request)
+        val jar = SiteSessionCookies.makeTempCookies(context, url)
+        if (jar != null) request.addOption("--cookies", jar.absolutePath)
+        val metadata = try {
+            YoutubeDL.getInstance().getInfo(request)
+        } finally {
+            jar?.delete()
+        }
         val bytes = metadata.requestedFormats.orEmpty().sumOf { fmt ->
             fmt.fileSize.takeIf { it > 0 }
                 ?: fmt.fileSizeApproximate.takeIf { it > 0 }
@@ -89,7 +95,10 @@ object LegacyYtDlpEngine {
         var lastPart = 0L
         var completedTotals = 0L
         var lastPartTotal = 0L
-        YoutubeDL.getInstance().execute(request, job.id) { percentage: Float, eta: Long, line: String ->
+        val jar = SiteSessionCookies.makeTempCookies(context, job.url)
+        if (jar != null) request.addOption("--cookies", jar.absolutePath)
+        try {
+            YoutubeDL.getInstance().execute(request, job.id) { percentage: Float, eta: Long, line: String ->
             val values = if ("DOWNLOAD_STATS:" in line)
                 line.substringAfter("DOWNLOAD_STATS:").trim().split(':')
             else emptyList()
@@ -114,6 +123,9 @@ object LegacyYtDlpEngine {
                 (downloaded * 100.0 / total).toInt().coerceIn(0, 100)
             } else 0
             progress(downloaded, total, p, eta)
+            }
+        } finally {
+            jar?.delete()
         }
 
         val files = directory.walkTopDown()
